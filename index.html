@@ -69,6 +69,12 @@
     border-radius:4px; background:#fff; color:var(--text);
   }
   .toolbar .count{margin-left:auto; color:var(--sub); font-size:12px;}
+  .legend{display:flex; align-items:center; gap:14px; font-size:12px; color:var(--sub);}
+  .legend-item{display:inline-flex; align-items:center; gap:5px;}
+  .swatch{width:11px; height:11px; border-radius:2px; display:inline-block; border:1px solid rgba(0,0,0,.08);}
+  .swatch-today{background:#fff8e6;}
+  .swatch-live{background:#fff0ef;}
+  .swatch-final{background:rgba(31,138,76,.12);}
 
   /* ---- Sheet ---- */
   .sheet-wrap{overflow:auto; max-height:calc(100vh - 100px);}
@@ -160,6 +166,11 @@
       <option value="finished">Completed only</option>
     </select>
   </div>
+  <div class="legend">
+    <span class="legend-item"><span class="swatch swatch-today"></span>Scheduled today</span>
+    <span class="legend-item"><span class="swatch swatch-live"></span>Live now</span>
+    <span class="legend-item"><span class="swatch swatch-final"></span>Final</span>
+  </div>
   <div class="count" id="countLabel">0 rows</div>
 </div>
 
@@ -220,6 +231,18 @@ let LIVE_MAP = {}; // key: "AWAY@HOME" (display abbrs) for today -> {awayScore, 
 let allRows = []; // combined rows to render
 
 function buildKey(away, home){ return `${away}@${home}`; }
+
+// The workbook's "H2H Outcome Winner" column was left as — for any game not yet
+// final, even though the current series leader is already stated in plain text
+// in the "Head-to-Head Record" column (e.g. "BOS leads 5-2"). Parse that instead
+// of waiting for the game to finish, so the leader shows regardless of live status.
+function deriveH2HLeader(h2hText){
+  if(!h2hText) return '—';
+  const m = h2hText.match(/^([A-Z]{2,3})\s+leads/);
+  if(m) return m[1];
+  if(/^Tied/i.test(h2hText)) return 'Tied';
+  return '—';
+}
 
 async function fetchLiveToday(){
   const dateParam = todayEspnStr();
@@ -370,7 +393,7 @@ function render(){
       <td class="winner ${(r.winner==='—'&&!live)?'dash':''}">${winnerHtml}</td>
       <td class="record">${recordHtml}</td>
       <td class="h2h">${r.h2h || ''}</td>
-      <td class="team">${r.h2h_winner === '—' ? '—' : (r.h2h_winner||'')}</td>
+      <td class="team">${(!r.h2h_winner || r.h2h_winner === '—') ? deriveH2HLeader(r.h2h) : r.h2h_winner}</td>
     `;
     tbody.appendChild(tr);
   });
