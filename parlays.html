@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLB Parlay Builder — Confidence Picks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page-bg: #eef1f6;
+    --surface: #ffffff;
+    --grid: #e3e7ee;
+    --grid-strong: #ccd3de;
+    --header-bg: linear-gradient(135deg, #002d72 0%, #001a46 100%);
+    --header-fg: #ffffff;
+    --colhead-bg: #f2f4f8;
+    --accent: #002d72;
+    --accent-soft: rgba(0,45,114,.08);
+    --live: #d50032;
+    --live-soft: rgba(213,0,50,.09);
+    --win: #0a7d3f;
+    --win-soft: rgba(10,125,63,.10);
+    --text: #14213b;
+    --sub: #64708a;
+    --radius: 12px;
+    --radius-sm: 7px;
+    --shadow: 0 1px 2px rgba(0,20,60,.05), 0 8px 24px -12px rgba(0,20,60,.22);
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', 'Roboto Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--page-bg);font-family:var(--font-ui);color:var(--text);}
+
+  .titlebar{
+    background:var(--header-bg); color:var(--header-fg);
+    padding:16px 22px; display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:10px; box-shadow:0 2px 10px rgba(0,20,60,.3);
+    border-bottom:3px solid var(--live);
+  }
+  .titlebar h1{font-size:16px; margin:0; font-weight:700;}
+  .titlebar .sub{font-size:12px; color:#9fb3d9; margin-top:3px;}
+  .back-link{
+    color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .back-link:hover{color:#fff;}
+
+  .page-wrap{max-width:1100px; margin:22px auto; padding:0 18px 40px;}
+
+  .disclaimer{
+    background:var(--live-soft); border:1px solid rgba(213,0,50,.25); color:var(--live);
+    border-radius:var(--radius-sm); padding:10px 14px; font-size:12.5px; margin-bottom:20px; line-height:1.5;
+  }
+
+  .card{background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--grid-strong); padding:20px; margin-bottom:20px;}
+  .card h2{font-size:14px; margin:0 0 14px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.4px;}
+
+  .status-line{font-size:13px; color:var(--sub); margin-bottom:14px;}
+
+  /* Controls */
+  .controls{display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start;}
+  .control-group{display:flex; flex-direction:column; gap:6px;}
+  .control-group label{font-size:12px; font-weight:600; color:var(--sub); text-transform:uppercase; letter-spacing:.3px;}
+  select, button{
+    font-family:var(--font-ui); font-size:13px; padding:8px 12px; border:1px solid var(--grid-strong);
+    border-radius:var(--radius-sm); background:var(--surface); color:var(--text);
+  }
+  .btn-primary{
+    background:var(--live); color:#fff; border:none; font-weight:700; cursor:pointer;
+    padding:10px 20px; letter-spacing:.2px;
+  }
+  .btn-primary:hover{background:#b8002a;}
+  .btn-primary:disabled{background:#c9ccd4; cursor:not-allowed;}
+
+  .game-picker{display:none; margin-top:14px; border-top:1px solid var(--grid); padding-top:14px;}
+  .game-picker.open{display:block;}
+  .game-picker .hint{font-size:12px; color:var(--sub); margin-bottom:10px;}
+  .game-checks{display:grid; grid-template-columns:repeat(auto-fill, minmax(230px,1fr)); gap:8px;}
+  .game-check{
+    display:flex; align-items:center; gap:8px; font-size:13px; padding:7px 10px;
+    border:1px solid var(--grid); border-radius:var(--radius-sm); cursor:pointer; background:var(--colhead-bg);
+  }
+  .game-check input{margin:0;}
+  .game-check.picked{border-color:var(--accent); background:var(--accent-soft);}
+
+  /* Pool table */
+  .pool-list{display:flex; flex-direction:column; gap:6px;}
+  .pool-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:9px 12px; border:1px solid var(--grid); border-radius:var(--radius-sm); font-size:13px;
+  }
+  .pool-teams{font-weight:700; min-width:130px;}
+  .pool-pick{color:var(--win); font-weight:700; font-size:12.5px;}
+  .pool-conf{font-family:var(--font-mono); font-size:12px; color:var(--sub); min-width:50px; text-align:right;}
+  .pool-h2h{font-size:11.5px; color:var(--sub); flex:1;}
+  .conf-bar{height:5px; border-radius:3px; background:var(--grid); width:80px; overflow:hidden;}
+  .conf-bar-fill{height:100%; background:var(--win);}
+
+  /* Parlay results */
+  .parlay-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:14px;}
+  .parlay-card{
+    border:1px solid var(--grid-strong); border-radius:var(--radius); padding:16px; background:var(--colhead-bg);
+    position:relative;
+  }
+  .parlay-card.best{border-color:var(--win); background:var(--win-soft);}
+  .parlay-rank{
+    font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--sub);
+    margin-bottom:8px;
+  }
+  .parlay-card.best .parlay-rank{color:var(--win);}
+  .parlay-legs{list-style:none; margin:0 0 12px; padding:0; display:flex; flex-direction:column; gap:6px;}
+  .parlay-legs li{font-size:13px; display:flex; justify-content:space-between; gap:8px;}
+  .parlay-legs .leg-teams{color:var(--sub);}
+  .parlay-legs .leg-pick{font-weight:700;}
+  .parlay-combined{
+    display:flex; justify-content:space-between; align-items:center; padding-top:10px;
+    border-top:1px dashed var(--grid-strong); font-size:13px;
+  }
+  .parlay-combined .value{font-family:var(--font-mono); font-weight:700; font-size:16px; color:var(--accent);}
+  .parlay-card.best .parlay-combined .value{color:var(--win);}
+
+  .empty-state{color:var(--sub); font-size:13px; padding:20px; text-align:center;}
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <div>
+    <h1>MLB Parlay Builder</h1>
+    <div class="sub" id="rangeSub">Loading today's slate and season data from ESPN…</div>
+  </div>
+  <a class="back-link" href="index.html">← Back to schedule sheet</a>
+</div>
+
+<div class="page-wrap">
+
+  <div class="disclaimer">
+    <strong>What this is:</strong> a confidence-ranked pick generator built from each team's live season win % and current head-to-head record — not real sportsbook odds or payouts, and not betting advice. It's a way to explore the data on the schedule page as parlay-style combinations, for entertainment only.
+  </div>
+
+  <div class="card">
+    <h2>Build parlays</h2>
+    <div class="status-line" id="poolStatus">Loading…</div>
+    <div class="controls">
+      <div class="control-group">
+        <label>Game pool</label>
+        <select id="poolMode">
+          <option value="all">All of today's games</option>
+          <option value="custom">Choose specific games (min 4)</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Number of parlays</label>
+        <select id="parlayCount">
+          <option value="5" selected>5</option>
+          <option value="6">6</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>&nbsp;</label>
+        <button class="btn-primary" id="generateBtn" disabled>Generate parlays</button>
+      </div>
+    </div>
+    <div class="game-picker" id="gamePicker">
+      <div class="hint">Select at least 4 games to build custom parlays from.</div>
+      <div class="game-checks" id="gameChecks"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Today's games — picks &amp; confidence</h2>
+    <div class="pool-list" id="poolList"><div class="empty-state">Loading…</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Generated parlays</h2>
+    <div class="parlay-grid" id="parlayResults"><div class="empty-state">Set your options above and click "Generate parlays".</div></div>
+  </div>
+
+</div>
+
+<script>
+const TEAM_IDS = {
+  BAL:1, BOS:2, LAA:3, CWS:4, CLE:5, DET:6, KC:7, MIL:8, MIN:9, NYY:10,
+  ATH:11, SEA:12, TEX:13, TOR:14, ATL:15, CHC:16, CIN:17, HOU:18, LAD:19, WSH:20,
+  NYM:21, PHI:22, PIT:23, STL:24, SD:25, SF:26, COL:27, MIA:28, AZ:29, TB:30
+};
+const TO_ESPN = { AZ:'ARI', CWS:'CHW' };
+const FROM_ESPN = { ARI:'AZ', CHW:'CWS' };
+function toDisplay(abbr){ return FROM_ESPN[abbr] || abbr; }
+
+let SEASON_DATA = [];   // completed games this season, all teams
+let STANDINGS = {};     // team -> {w,l}
+let TODAY_GAMES = [];   // today's matchups: {away, home, status}
+let POOL = [];          // computed pick pool: {away, home, pick, confidence, h2hText, status}
+
+function todayEspnStr(){
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function fetchTeamSchedule(id){
+  try{
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${id}/schedule?season=2026&seasontype=2`);
+    if(!res.ok) return [];
+    const json = await res.json();
+    const games = [];
+    (json.events || []).forEach(ev => {
+      const comp = ev.competitions && ev.competitions[0];
+      if(!comp) return;
+      const state = comp.status && comp.status.type ? comp.status.type.state : '';
+      if(state !== 'post') return;
+      const competitors = comp.competitors || [];
+      const homeC = competitors.find(c => c.homeAway === 'home');
+      const awayC = competitors.find(c => c.homeAway === 'away');
+      if(!homeC || !awayC) return;
+      const homeAbbr = toDisplay(homeC.team.abbreviation);
+      const awayAbbr = toDisplay(awayC.team.abbreviation);
+      let winner = '—';
+      if(homeC.winner) winner = homeAbbr;
+      else if(awayC.winner) winner = awayAbbr;
+      games.push({ id: ev.id, date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner });
+    });
+    return games;
+  } catch(e){ console.error('schedule fetch failed', id, e); return []; }
+}
+
+async function fetchFullSeason(){
+  const ids = Object.values(TEAM_IDS);
+  const results = await Promise.all(ids.map(id => fetchTeamSchedule(id)));
+  const byId = new Map();
+  results.flat().forEach(g => byId.set(g.id, g));
+  return Array.from(byId.values());
+}
+
+function computeStandings(rows){
+  const record = {};
+  rows.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    const loser = r.winner === r.away ? r.home : r.away;
+    record[r.winner] = record[r.winner] || { w:0, l:0 };
+    record[loser] = record[loser] || { w:0, l:0 };
+    record[r.winner].w++;
+    record[loser].l++;
+  });
+  return record;
+}
+
+function computeH2H(teamA, teamB){
+  let winsA = 0, winsB = 0;
+  SEASON_DATA.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    const pair = new Set([r.away, r.home]);
+    if(!pair.has(teamA) || !pair.has(teamB)) return;
+    if(r.winner === teamA) winsA++;
+    else if(r.winner === teamB) winsB++;
+  });
+  return { winsA, winsB, total: winsA + winsB };
+}
+
+async function fetchTodayGames(){
+  const dateParam = todayEspnStr();
+  try{
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateParam}`);
+    if(!res.ok) return [];
+    const json = await res.json();
+    const games = [];
+    (json.events || []).forEach(ev => {
+      const comp = ev.competitions && ev.competitions[0];
+      if(!comp) return;
+      const competitors = comp.competitors || [];
+      const homeC = competitors.find(c => c.homeAway === 'home');
+      const awayC = competitors.find(c => c.homeAway === 'away');
+      if(!homeC || !awayC) return;
+      const state = comp.status && comp.status.type ? comp.status.type.state : 'pre';
+      const shortDetail = comp.status && comp.status.type ? comp.status.type.shortDetail : '';
+      games.push({
+        away: toDisplay(awayC.team.abbreviation),
+        home: toDisplay(homeC.team.abbreviation),
+        status: state, statusText: shortDetail
+      });
+    });
+    return games;
+  } catch(e){ console.error('today fetch failed', e); return []; }
+}
+
+// Blends season win% (70%) with head-to-head win% (30%, when the teams have met)
+// to produce a pick + confidence for one game.
+function pickForGame(away, home){
+  const recA = STANDINGS[away] || { w:0, l:0 };
+  const recB = STANDINGS[home] || { w:0, l:0 };
+  const gamesA = recA.w + recA.l, gamesB = recB.w + recB.l;
+  const pctA = gamesA > 0 ? recA.w / gamesA : 0.5;
+  const pctB = gamesB > 0 ? recB.w / gamesB : 0.5;
+
+  const h2h = computeH2H(away, home);
+  const h2hPctA = h2h.total > 0 ? h2h.winsA / h2h.total : pctA;
+  const h2hPctB = h2h.total > 0 ? h2h.winsB / h2h.total : pctB;
+
+  const blendedA = h2h.total > 0 ? (pctA * 0.7 + h2hPctA * 0.3) : pctA;
+  const blendedB = h2h.total > 0 ? (pctB * 0.7 + h2hPctB * 0.3) : pctB;
+
+  const pick = blendedA >= blendedB ? away : home;
+  const confidence = Math.max(blendedA, blendedB);
+
+  let h2hText = 'No meetings yet';
+  if(h2h.total > 0){
+    h2hText = h2h.winsA === h2h.winsB ? `Tied ${h2h.winsA}-${h2h.winsB}`
+      : (h2h.winsA > h2h.winsB ? `${away} leads ${h2h.winsA}-${h2h.winsB}` : `${home} leads ${h2h.winsB}-${h2h.winsA}`);
+  }
+
+  return { away, home, pick, confidence, h2hText, recA: `${recA.w}-${recA.l}`, recB: `${recB.w}-${recB.l}` };
+}
+
+function renderPool(){
+  const list = document.getElementById('poolList');
+  if(POOL.length === 0){
+    list.innerHTML = '<div class="empty-state">No games found for today.</div>';
+    return;
+  }
+  list.innerHTML = POOL.map(g => {
+    const pct = Math.round(g.confidence * 100);
+    return `
+      <div class="pool-row">
+        <div class="pool-teams">${g.away} @ ${g.home}</div>
+        <div class="pool-h2h">${g.h2hText} &middot; ${g.away} (${g.recA}) / ${g.home} (${g.recB})</div>
+        <div class="pool-pick">${g.pick}</div>
+        <div class="conf-bar"><div class="conf-bar-fill" style="width:${pct}%"></div></div>
+        <div class="pool-conf">${pct}%</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderGameChecks(){
+  const wrap = document.getElementById('gameChecks');
+  wrap.innerHTML = POOL.map((g, i) => `
+    <label class="game-check" data-idx="${i}">
+      <input type="checkbox" value="${i}">
+      <span>${g.away} @ ${g.home} <span style="color:var(--sub); font-size:11px;">(pick: ${g.pick})</span></span>
+    </label>
+  `).join('');
+  wrap.querySelectorAll('.game-check').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if(e.target.tagName !== 'INPUT'){
+        const cb = el.querySelector('input');
+        cb.checked = !cb.checked;
+      }
+      el.classList.toggle('picked', el.querySelector('input').checked);
+      updateGenerateEnabled();
+    });
+  });
+}
+
+function selectedPoolIndices(){
+  return Array.from(document.querySelectorAll('#gameChecks input:checked')).map(el => parseInt(el.value));
+}
+
+function updateGenerateEnabled(){
+  const mode = document.getElementById('poolMode').value;
+  const btn = document.getElementById('generateBtn');
+  if(mode === 'all'){
+    btn.disabled = POOL.length < 4;
+  } else {
+    btn.disabled = selectedPoolIndices().length < 4;
+  }
+}
+
+// Shuffles a copy of the array (Fisher-Yates).
+function shuffled(arr){
+  const a = arr.slice();
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function generateParlays(){
+  const mode = document.getElementById('poolMode').value;
+  const count = parseInt(document.getElementById('parlayCount').value);
+  const basePool = mode === 'all' ? POOL.map((_, i) => i) : selectedPoolIndices();
+
+  if(basePool.length < 4){
+    document.getElementById('parlayResults').innerHTML = '<div class="empty-state">Need at least 4 games in the pool to build a parlay.</div>';
+    return;
+  }
+
+  const maxLegs = Math.min(basePool.length, 6);
+  const seen = new Set();
+  const parlays = [];
+  let attempts = 0;
+
+  while(parlays.length < count && attempts < count * 25){
+    attempts++;
+    const legCount = 4 + (parlays.length % Math.max(1, maxLegs - 3));
+    const size = Math.min(legCount, maxLegs);
+    const legsIdx = shuffled(basePool).slice(0, size).sort((a,b) => a - b);
+    const sig = legsIdx.join(',');
+    if(seen.has(sig)) continue;
+    seen.add(sig);
+
+    const legs = legsIdx.map(i => POOL[i]);
+    const combined = legs.reduce((p, g) => p * g.confidence, 1);
+    parlays.push({ legs, combined });
+  }
+
+  parlays.sort((a, b) => b.combined - a.combined);
+  renderParlays(parlays);
+}
+
+function renderParlays(parlays){
+  const wrap = document.getElementById('parlayResults');
+  if(parlays.length === 0){
+    wrap.innerHTML = '<div class="empty-state">Couldn\'t build enough distinct parlays from this pool — try a larger game selection.</div>';
+    return;
+  }
+  wrap.innerHTML = parlays.map((p, i) => `
+    <div class="parlay-card ${i === 0 ? 'best' : ''}">
+      <div class="parlay-rank">${i === 0 ? 'Highest confidence' : `Parlay ${i + 1}`} · ${p.legs.length} legs</div>
+      <ul class="parlay-legs">
+        ${p.legs.map(g => `<li><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
+      </ul>
+      <div class="parlay-combined">
+        <span>Combined confidence</span>
+        <span class="value">${(p.combined * 100).toFixed(1)}%</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function init(){
+  document.getElementById('poolStatus').textContent = 'Loading season data from ESPN (30 teams)…';
+
+  const [season, today] = await Promise.all([fetchFullSeason(), fetchTodayGames()]);
+  SEASON_DATA = season;
+  STANDINGS = computeStandings(SEASON_DATA);
+  TODAY_GAMES = today;
+
+  if(TODAY_GAMES.length === 0){
+    document.getElementById('rangeSub').textContent = 'No games found for today, or ESPN data unavailable.';
+    document.getElementById('poolStatus').textContent = 'No games to build parlays from right now.';
+    return;
+  }
+
+  POOL = TODAY_GAMES.map(g => pickForGame(g.away, g.home));
+
+  document.getElementById('rangeSub').textContent = `${TODAY_GAMES.length} games today · picks from ${SEASON_DATA.length} completed games this season`;
+  document.getElementById('poolStatus').textContent = `${POOL.length} games available today. Pick confidence blends season win % with head-to-head record.`;
+
+  renderPool();
+  renderGameChecks();
+  updateGenerateEnabled();
+
+  document.getElementById('poolMode').addEventListener('change', (e) => {
+    document.getElementById('gamePicker').classList.toggle('open', e.target.value === 'custom');
+    updateGenerateEnabled();
+  });
+  document.getElementById('generateBtn').addEventListener('click', generateParlays);
+}
+
+init();
+</script>
+</body>
+</html>
