@@ -23,6 +23,8 @@
     --live-soft: rgba(213,0,50,.09);
     --win: #0a7d3f;
     --win-soft: rgba(10,125,63,.10);
+    --warn: #c2660a;
+    --warn-soft: rgba(194,102,10,.13);
     --today-soft: #fff4d6;
     --text: #14213b;
     --sub: #64708a;
@@ -137,6 +139,8 @@
   }
   .status-final{background:var(--win-soft); color:var(--win);}
   .status-pre{background:rgba(107,115,135,.12); color:var(--sub);}
+  .h2h-match{background:var(--win-soft) !important; color:var(--win) !important; font-weight:700;}
+  .h2h-mismatch{background:var(--warn-soft) !important; color:var(--warn) !important; font-weight:700;}
 
   footer{padding:12px 18px; font-size:11px; color:#8189a0; background:var(--colhead-bg); border-top:1px solid var(--grid);}
   footer a{color:var(--accent);}
@@ -218,7 +222,7 @@
 
 <footer>
   Season history is pulled live from ESPN's public schedule endpoints for all 30 teams (through <span id="histThrough">—</span>) each time this page loads. Today's games refresh automatically every 30 seconds while this page is open. No API key required. If ESPN's data can't be reached, the page falls back to sample data instead of showing nothing.
-  <div style="margin-top:6px; color:#a7b2c2;">version: 2026_august_17i</div>
+  <div style="margin-top:6px; color:#a7b2c2;">version: 2026_august_17j</div>
 </footer>
 
 </div>
@@ -355,6 +359,15 @@ function deriveH2HLeader(h2hText){
   if(m) return m[1];
   if(/^Tied/i.test(h2hText)) return 'Tied';
   return '—';
+}
+
+// Pulls the actual team abbreviation out of a G-column display value so it can be
+// compared against the game's real winner. "Tied - NYY" -> "NYY"; a bare "Tied"
+// or "—" has no determinable team, so returns null (no color applied for those).
+function extractH2HTeam(displayVal){
+  if(!displayVal || displayVal === '—' || displayVal === 'Tied') return null;
+  const m = displayVal.match(/^Tied - (.+)$/);
+  return m ? m[1] : displayVal;
 }
 
 // Computes a head-to-head record between two teams by scanning every completed
@@ -529,6 +542,19 @@ function render(){
       recordHtml = r.record || '';
     }
 
+    // Determine this game's actual final winner (from live data if today's game
+    // has finished, otherwise from the row itself) so we can check whether the
+    // head-to-head favorite actually called it right.
+    const actualWinner = (live && live.state === 'post') ? live.winner
+      : (r.winner && r.winner !== '—' ? r.winner : null);
+
+    const h2hDisplay = (!r.h2h_winner || r.h2h_winner === '—') ? deriveH2HLeader(r.h2h) : r.h2h_winner;
+    const h2hTeam = extractH2HTeam(h2hDisplay);
+    let h2hCellClass = '';
+    if(actualWinner && h2hTeam){
+      h2hCellClass = (h2hTeam === actualWinner) ? 'h2h-match' : 'h2h-mismatch';
+    }
+
     tr.innerHTML = `
       <th class="rownum">${i+1}</th>
       <td class="date">${r.date}</td>
@@ -537,7 +563,7 @@ function render(){
       <td class="winner ${(r.winner==='—'&&!live)?'dash':''}">${winnerHtml}</td>
       <td class="record">${recordHtml}</td>
       <td class="h2h">${r.h2h || ''}</td>
-      <td class="team">${(!r.h2h_winner || r.h2h_winner === '—') ? deriveH2HLeader(r.h2h) : r.h2h_winner}</td>
+      <td class="team ${h2hCellClass}">${h2hDisplay}</td>
     `;
     tbody.appendChild(tr);
   });
