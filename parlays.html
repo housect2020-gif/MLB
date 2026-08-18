@@ -98,6 +98,12 @@
     padding:9px 12px; border:1px solid var(--grid); border-radius:var(--radius-sm); font-size:13px;
   }
   .pool-teams{font-weight:700; min-width:130px;}
+  .status-badge{
+    font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;
+    padding:2px 6px; border-radius:99px; margin-left:6px; vertical-align:middle;
+  }
+  .status-badge.live{background:var(--live-soft); color:var(--live);}
+  .status-badge.pre{background:var(--accent-soft); color:var(--accent);}
   .pool-pick{color:var(--win); font-weight:700; font-size:12.5px;}
   .pool-conf{font-family:var(--font-mono); font-size:12px; color:var(--sub); min-width:50px; text-align:right;}
   .pool-h2h{font-size:11.5px; color:var(--sub); flex:1;}
@@ -315,7 +321,7 @@ async function fetchTodayGames(){
 
 // Blends season win% (70%) with head-to-head win% (30%, when the teams have met)
 // to produce a pick + confidence for one game.
-function pickForGame(away, home){
+function pickForGame(away, home, status, statusText){
   const recA = STANDINGS[away] || { w:0, l:0 };
   const recB = STANDINGS[home] || { w:0, l:0 };
   const gamesA = recA.w + recA.l, gamesB = recB.w + recB.l;
@@ -338,20 +344,23 @@ function pickForGame(away, home){
       : (h2h.winsA > h2h.winsB ? `${away} leads ${h2h.winsA}-${h2h.winsB}` : `${home} leads ${h2h.winsB}-${h2h.winsA}`);
   }
 
-  return { away, home, pick, confidence, h2hText, recA: `${recA.w}-${recA.l}`, recB: `${recB.w}-${recB.l}` };
+  return { away, home, pick, confidence, h2hText, status, statusText, recA: `${recA.w}-${recA.l}`, recB: `${recB.w}-${recB.l}` };
 }
 
 function renderPool(){
   const list = document.getElementById('poolList');
   if(POOL.length === 0){
-    list.innerHTML = '<div class="empty-state">No games found for today.</div>';
+    list.innerHTML = '<div class="empty-state">No live or upcoming games right now — everything on today\'s slate is already final.</div>';
     return;
   }
   list.innerHTML = POOL.map(g => {
     const pct = Math.round(g.confidence * 100);
+    const badge = g.status === 'in'
+      ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
+      : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
     return `
       <div class="pool-row">
-        <div class="pool-teams">${g.away} @ ${g.home}</div>
+        <div class="pool-teams">${g.away} @ ${g.home} ${badge}</div>
         <div class="pool-h2h">${g.h2hText} &middot; ${g.away} (${g.recA}) / ${g.home} (${g.recB})</div>
         <div class="pool-pick">${g.pick}</div>
         <div class="conf-bar"><div class="conf-bar-fill" style="width:${pct}%"></div></div>
@@ -524,10 +533,15 @@ async function init(){
     return;
   }
 
-  POOL = TODAY_GAMES.map(g => pickForGame(g.away, g.home));
+  // Only games still live or not yet started are eligible for parlays — a
+  // finished game has no future outcome left to include in a pick.
+  const eligibleGames = TODAY_GAMES.filter(g => g.status !== 'post');
+  const finishedCount = TODAY_GAMES.length - eligibleGames.length;
 
-  document.getElementById('rangeSub').textContent = `${TODAY_GAMES.length} games today · picks from ${SEASON_DATA.length} completed games this season`;
-  document.getElementById('poolStatus').textContent = `${POOL.length} games available today. Pick confidence blends season win % with head-to-head record.`;
+  POOL = eligibleGames.map(g => pickForGame(g.away, g.home, g.status, g.statusText));
+
+  document.getElementById('rangeSub').textContent = `${TODAY_GAMES.length} games today (${finishedCount} final, excluded) · picks from ${SEASON_DATA.length} completed games this season`;
+  document.getElementById('poolStatus').textContent = `${POOL.length} live or upcoming games available for parlays${finishedCount > 0 ? ` — ${finishedCount} final game${finishedCount === 1 ? '' : 's'} excluded` : ''}. Pick confidence blends season win % with head-to-head record.`;
 
   renderPool();
   renderGameChecks();
