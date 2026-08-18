@@ -217,7 +217,7 @@
 
 <footer>
   Season history is pulled live from ESPN's public schedule endpoints for all 30 teams (through <span id="histThrough">—</span>) each time this page loads. Today's games refresh automatically every 30 seconds while this page is open. No API key required. If ESPN's data can't be reached, the page falls back to sample data instead of showing nothing.
-  <div style="margin-top:6px; color:#a7b2c2;">version: 2026_august_17g</div>
+  <div style="margin-top:6px; color:#a7b2c2;">version: 2026_august_17h</div>
 </footer>
 
 </div>
@@ -252,6 +252,7 @@ function todayEspnStr(){
 let LIVE_MAP = {}; // key: "AWAY@HOME" (display abbrs) for today -> {awayScore, homeScore, status, winner}
 let allRows = []; // combined rows to render
 let SEASON_DATA = []; // populated at init() from ESPN team schedules, falls back to FALLBACK_DATA if that fails
+let STANDINGS = {}; // team -> {w, l} current overall season record, set by backfillSeasonRecords()
 
 // ESPN's numeric team IDs, keyed by the display abbreviations used throughout this page.
 const TEAM_IDS = {
@@ -338,6 +339,7 @@ function backfillSeasonRecords(rows){
       r.record = `${r.away} (${awayRec}) @ ${r.home} (${homeRec})`;
     });
   });
+  STANDINGS = record; // final cumulative record per team, for H2H tie-breaking
 }
 
 function buildKey(away, home){ return `${away}@${home}`; }
@@ -357,7 +359,9 @@ function deriveH2HLeader(h2hText){
 // Computes a head-to-head record between two teams by scanning every completed
 // game in the full dataset (regardless of which side was home/away), so it works
 // for ANY matchup — including today's real ESPN matchups that may not match the
-// specific pairing the workbook happened to list for this date.
+// specific pairing the workbook happened to list for this date. When the series
+// is tied, the team with the better overall season record breaks the tie for the
+// "leader" value (column G) — the tie itself still shows in column F's text.
 function computeH2H(teamA, teamB){
   let winsA = 0, winsB = 0;
   SEASON_DATA.forEach(r => {
@@ -368,7 +372,18 @@ function computeH2H(teamA, teamB){
     else if(r.winner === teamB) winsB++;
   });
   if(winsA === 0 && winsB === 0) return { text: 'No meetings yet', leader: '—' };
-  if(winsA === winsB) return { text: `Tied ${winsA}-${winsB}`, leader: 'Tied' };
+  if(winsA === winsB){
+    const text = `Tied ${winsA}-${winsB}`;
+    const recA = STANDINGS[teamA], recB = STANDINGS[teamB];
+    if(recA && recB){
+      const gamesA = recA.w + recA.l, gamesB = recB.w + recB.l;
+      const pctA = gamesA > 0 ? recA.w / gamesA : 0;
+      const pctB = gamesB > 0 ? recB.w / gamesB : 0;
+      if(pctA > pctB) return { text, leader: `Tied - ${teamA}` };
+      if(pctB > pctA) return { text, leader: `Tied - ${teamB}` };
+    }
+    return { text, leader: 'Tied' };
+  }
   return winsA > winsB
     ? { text: `${teamA} leads ${winsA}-${winsB}`, leader: teamA }
     : { text: `${teamB} leads ${winsB}-${winsA}`, leader: teamB };
