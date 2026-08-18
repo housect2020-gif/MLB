@@ -217,7 +217,7 @@
 
 <footer>
   Season history is pulled live from ESPN's public schedule endpoints for all 30 teams (through <span id="histThrough">—</span>) each time this page loads. Today's games refresh automatically every 30 seconds while this page is open. No API key required. If ESPN's data can't be reached, the page falls back to sample data instead of showing nothing.
-  <div style="margin-top:6px; color:#a7b2c2;">version: 2026_august_17f</div>
+  <div style="margin-top:6px; color:#a7b2c2;">version: 2026_august_17g</div>
 </footer>
 
 </div>
@@ -284,17 +284,13 @@ async function fetchTeamSchedule(id){
       if(homeC.winner) winner = homeAbbr;
       else if(awayC.winner) winner = awayAbbr;
       const dateStr = (ev.date || '').slice(0, 10);
-      // ESPN's score field is an object ({value, displayValue}), not a plain number —
-      // pull the display string out rather than stringifying the whole object.
-      const awayScore = (awayC.score && (awayC.score.displayValue ?? awayC.score.value)) ?? awayC.score ?? '';
-      const homeScore = (homeC.score && (homeC.score.displayValue ?? homeC.score.value)) ?? homeC.score ?? '';
       games.push({
         id: ev.id,
         date: dateStr,
         away: awayAbbr,
         home: homeAbbr,
         winner,
-        record: `${awayAbbr} ${awayScore} @ ${homeAbbr} ${homeScore}`,
+        record: '', // filled in by backfillSeasonRecords() once the full season is loaded
         h2h: '',
         h2h_winner: '—'
       });
@@ -316,6 +312,32 @@ async function fetchFullSeason(){
   const merged = Array.from(byId.values()).map(({id, ...rest}) => rest);
   merged.sort((a, b) => a.date.localeCompare(b.date));
   return merged;
+}
+
+// Computes each team's actual win-loss record for the season and stamps it onto
+// every game as of that date (games played that date included). This is what
+// column E ("Current / Winner Record") is supposed to show — the teams' season
+// standing, not that individual game's final score.
+function backfillSeasonRecords(rows){
+  const record = {}; // team -> {w, l}
+  const byDate = {};
+  rows.forEach(r => { (byDate[r.date] = byDate[r.date] || []).push(r); });
+  Object.keys(byDate).sort().forEach(date => {
+    const gamesToday = byDate[date];
+    gamesToday.forEach(r => {
+      if(!r.winner || r.winner === '—') return;
+      const loser = r.winner === r.away ? r.home : r.away;
+      record[r.winner] = record[r.winner] || { w: 0, l: 0 };
+      record[loser] = record[loser] || { w: 0, l: 0 };
+      record[r.winner].w++;
+      record[loser].l++;
+    });
+    gamesToday.forEach(r => {
+      const awayRec = record[r.away] ? `${record[r.away].w}-${record[r.away].l}` : '0-0';
+      const homeRec = record[r.home] ? `${record[r.home].w}-${record[r.home].l}` : '0-0';
+      r.record = `${r.away} (${awayRec}) @ ${r.home} (${homeRec})`;
+    });
+  });
 }
 
 function buildKey(away, home){ return `${away}@${home}`; }
@@ -533,9 +555,10 @@ async function init(){
 
   if(season.length > 0){
     SEASON_DATA = season;
-    // The fetch above only builds each row's own game info — H2H wasn't computed
-    // per-row yet. Backfill it now that the full season is loaded, so every row
-    // (not just today's) gets a real head-to-head record.
+    // The fetch above only builds each row's own game info — season records and
+    // H2H weren't computed per-row yet. Backfill both now that the full season
+    // is loaded, so every row (not just today's) gets real values.
+    backfillSeasonRecords(SEASON_DATA);
     SEASON_DATA.forEach(r => {
       const h2h = computeH2H(r.away, r.home);
       r.h2h = h2h.text;
