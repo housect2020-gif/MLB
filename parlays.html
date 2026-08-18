@@ -6,6 +6,7 @@
 <title>MLB Parlay Builder — Confidence Picks</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <style>
   :root{
     --page-bg: #eef1f6;
@@ -72,6 +73,12 @@
   }
   .btn-primary:hover{background:#b8002a;}
   .btn-primary:disabled{background:#c9ccd4; cursor:not-allowed;}
+  .btn-secondary{
+    background:var(--surface); color:var(--accent); border:1px solid var(--accent); font-weight:700; cursor:pointer;
+    padding:8px 16px; letter-spacing:.2px; font-size:12.5px;
+  }
+  .btn-secondary:hover{background:var(--accent-soft);}
+  .btn-secondary:disabled{color:var(--sub); border-color:var(--grid-strong); cursor:not-allowed;}
 
   .game-picker{display:none; margin-top:14px; border-top:1px solid var(--grid); padding-top:14px;}
   .game-picker.open{display:block;}
@@ -178,11 +185,17 @@
   </div>
 
   <div class="card">
-    <h2>Generated parlays</h2>
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
+      <h2 style="margin:0;">Generated parlays</h2>
+      <button class="btn-secondary" id="downloadPdfBtn" disabled>Download PDF</button>
+    </div>
     <div class="parlay-grid" id="parlayResults"><div class="empty-state">Set your options above and click "Generate parlays".</div></div>
   </div>
 
 </div>
+
+<!-- Off-screen printable summary — populated right before PDF export, not part of the normal page layout -->
+<div id="printArea" style="position:fixed; left:-9999px; top:0; width:720px; background:#fff; padding:30px; font-family:'Inter',Arial,sans-serif; color:#14213b;"></div>
 
 <script>
 const TEAM_IDS = {
@@ -198,10 +211,21 @@ let SEASON_DATA = [];   // completed games this season, all teams
 let STANDINGS = {};     // team -> {w,l}
 let TODAY_GAMES = [];   // today's matchups: {away, home, status}
 let POOL = [];          // computed pick pool: {away, home, pick, confidence, h2hText, status}
+let LAST_PARLAYS = [];  // most recently generated parlay set, used by the PDF download
 
 function todayEspnStr(){
   const d = new Date();
   return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function todayFileStr(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function todayLongStr(){
+  const d = new Date();
+  return d.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 async function fetchTeamSchedule(id){
@@ -388,6 +412,7 @@ function generateParlays(){
 
   if(basePool.length < 4){
     document.getElementById('parlayResults').innerHTML = '<div class="empty-state">Need at least 4 games in the pool to build a parlay.</div>';
+    document.getElementById('downloadPdfBtn').disabled = true;
     return;
   }
 
@@ -411,7 +436,9 @@ function generateParlays(){
   }
 
   parlays.sort((a, b) => b.combined - a.combined);
+  LAST_PARLAYS = parlays;
   renderParlays(parlays);
+  document.getElementById('downloadPdfBtn').disabled = parlays.length === 0;
 }
 
 function renderParlays(parlays){
@@ -432,6 +459,55 @@ function renderParlays(parlays){
       </div>
     </div>
   `).join('');
+}
+
+// Builds a clean, self-contained summary (independent of the page's own styling)
+// and hands it to html2pdf. Using an off-screen element rather than the live page
+// avoids capturing the controls/checkboxes and keeps the PDF layout predictable.
+function downloadPdf(){
+  if(LAST_PARLAYS.length === 0) return;
+
+  const printArea = document.getElementById('printArea');
+  const rows = LAST_PARLAYS.map((p, i) => `
+    <div style="margin-bottom:16px; padding:14px 16px; border:1px solid #d8dde6; border-radius:8px; ${i===0 ? 'border-color:#0a7d3f; background:#f2f9f5;' : ''}">
+      <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:${i===0?'#0a7d3f':'#64708a'}; margin-bottom:8px;">
+        ${i === 0 ? 'Highest confidence' : `Parlay ${i + 1}`} &middot; ${p.legs.length} legs
+      </div>
+      <div>
+        ${p.legs.map(g => `
+          <div style="display:flex; justify-content:space-between; font-size:13px; padding:3px 0;">
+            <span style="color:#64708a;">${g.away} @ ${g.home}</span>
+            <span style="font-weight:700;">${g.pick}</span>
+          </div>
+        `).join('')}
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px dashed #d8dde6; font-size:13px;">
+        <span>Combined confidence</span>
+        <span style="font-weight:700; font-family:'JetBrains Mono',monospace; font-size:15px; color:${i===0?'#0a7d3f':'#002d72'};">${(p.combined*100).toFixed(1)}%</span>
+      </div>
+    </div>
+  `).join('');
+
+  printArea.innerHTML = `
+    <div style="border-bottom:3px solid #d50032; padding-bottom:14px; margin-bottom:20px;">
+      <div style="font-size:20px; font-weight:800; color:#002d72;">MLB Parlay Builder</div>
+      <div style="font-size:13px; color:#64708a; margin-top:4px;">${todayLongStr()}</div>
+    </div>
+    <div style="font-size:11px; color:#64708a; background:#fdecef; border:1px solid #f3c6cf; border-radius:6px; padding:8px 12px; margin-bottom:20px; line-height:1.5;">
+      Confidence-ranked picks built from each team's live season win % and current head-to-head record — not real sportsbook odds or payouts, and not betting advice. Entertainment only.
+    </div>
+    ${rows}
+  `;
+
+  const opt = {
+    margin: 10,
+    filename: `mlb-parlays-${todayFileStr()}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' }
+  };
+
+  html2pdf().set(opt).from(printArea).save();
 }
 
 async function init(){
@@ -462,6 +538,7 @@ async function init(){
     updateGenerateEnabled();
   });
   document.getElementById('generateBtn').addEventListener('click', generateParlays);
+  document.getElementById('downloadPdfBtn').addEventListener('click', downloadPdf);
 }
 
 init();
