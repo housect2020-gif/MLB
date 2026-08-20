@@ -181,6 +181,16 @@
         </select>
       </div>
       <div class="control-group">
+        <label>Max legs per parlay</label>
+        <select id="maxLegs">
+          <option value="6" selected>Up to 6</option>
+          <option value="8">Up to 8</option>
+          <option value="10">Up to 10</option>
+          <option value="12">Up to 12</option>
+          <option value="99">All games in pool</option>
+        </select>
+      </div>
+      <div class="control-group">
         <label>&nbsp;</label>
         <button class="btn-primary" id="generateBtn" disabled>Generate parlays</button>
       </div>
@@ -423,6 +433,7 @@ function shuffled(arr){
 function generateParlays(){
   const mode = document.getElementById('poolMode').value;
   const count = parseInt(document.getElementById('parlayCount').value);
+  const userMaxLegs = parseInt(document.getElementById('maxLegs').value);
   const basePool = mode === 'all' ? POOL.map((_, i) => i) : selectedPoolIndices();
 
   if(basePool.length < 4){
@@ -431,7 +442,7 @@ function generateParlays(){
     return;
   }
 
-  const maxLegs = Math.min(basePool.length, 6);
+  const maxLegs = Math.min(basePool.length, userMaxLegs);
   const seen = new Set();
   const parlays = [];
   let attempts = 0;
