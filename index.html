@@ -93,6 +93,7 @@
   .swatch-today{background:var(--today-soft);}
   .swatch-live{background:var(--live-soft);}
   .swatch-final{background:var(--win-soft);}
+  .swatch-dateband{background:rgba(0,45,114,.045); border-color:rgba(0,45,114,.2);}
 
   /* ---- Sheet ---- */
   .sheet-wrap{overflow:auto; max-height:calc(100vh - 130px);}
@@ -117,6 +118,8 @@
     border:1px solid var(--grid); padding:8px 12px; white-space:nowrap; vertical-align:middle;
   }
   tbody tr:nth-child(even){background:var(--row-alt);}
+  tr.date-band{background:rgba(0,45,114,.045) !important;}
+  tr.date-band:hover{background:rgba(0,45,114,.09) !important;}
   tbody tr:hover{background:var(--row-hover);}
   td.date{font-family:var(--font-mono); color:var(--sub); font-size:12px;}
   td.team{font-weight:700; letter-spacing:.2px;}
@@ -195,6 +198,7 @@
     <span class="legend-item"><span class="swatch swatch-today"></span>Scheduled today</span>
     <span class="legend-item"><span class="swatch swatch-live"></span>Live now</span>
     <span class="legend-item"><span class="swatch swatch-final"></span>Final</span>
+    <span class="legend-item"><span class="swatch swatch-dateband"></span>Alternating by date</span>
   </div>
   <button id="exportCsvBtn" style="font-family:var(--font-ui); font-size:12.5px; font-weight:700; padding:6px 14px; border:1px solid var(--accent); border-radius:var(--radius-sm); background:var(--surface); color:var(--accent); cursor:pointer;">Export CSV</button>
   <div class="count" id="countLabel">0 rows</div>
@@ -224,7 +228,7 @@
 
 <footer>
   Season history is pulled live from ESPN's public schedule endpoints for all 30 teams (through <span id="histThrough">—</span>) each time this page loads. Today's games refresh automatically every 30 seconds while this page is open. No API key required. If ESPN's data can't be reached, the page falls back to sample data instead of showing nothing.
-  <div style="margin-top:6px; color:#a7b2c2;">version: 2026_august_17l</div>
+  <div style="margin-top:6px; color:#a7b2c2;">version: 2026_august_17m</div>
 </footer>
 
 </div>
@@ -527,6 +531,14 @@ function render(){
 
     if(isLiveInProgress) tr.classList.add('live-row');
     else if(isToday) tr.classList.add('today-row');
+    else {
+      // Alternate a subtle background per calendar date (even day-of-month vs
+      // odd) so consecutive games on the same date are visually grouped, and
+      // the shading flips every time the date changes — deterministic, so it
+      // doesn't shift around when filters or sort order change.
+      const dayOfMonth = parseInt(r.date.split('-')[2], 10);
+      if(!isNaN(dayOfMonth) && dayOfMonth % 2 === 0) tr.classList.add('date-band');
+    }
 
     let winnerHtml, recordHtml;
     if(live){
