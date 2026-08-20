@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLB Best Bet — H2H Parlay Combinations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page-bg: #eef1f6;
+    --surface: #ffffff;
+    --grid: #e3e7ee;
+    --grid-strong: #ccd3de;
+    --header-bg: linear-gradient(135deg, #002d72 0%, #001a46 100%);
+    --header-fg: #ffffff;
+    --colhead-bg: #f2f4f8;
+    --accent: #002d72;
+    --accent-soft: rgba(0,45,114,.08);
+    --live: #d50032;
+    --live-soft: rgba(213,0,50,.09);
+    --win: #0a7d3f;
+    --win-soft: rgba(10,125,63,.10);
+    --warn: #c2660a;
+    --warn-soft: rgba(194,102,10,.13);
+    --text: #14213b;
+    --sub: #64708a;
+    --radius: 12px;
+    --radius-sm: 7px;
+    --shadow: 0 1px 2px rgba(0,20,60,.05), 0 8px 24px -12px rgba(0,20,60,.22);
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', 'Roboto Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--page-bg);font-family:var(--font-ui);color:var(--text);}
+
+  .titlebar{
+    background:var(--header-bg); color:var(--header-fg);
+    padding:16px 22px; display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:10px; box-shadow:0 2px 10px rgba(0,20,60,.3);
+    border-bottom:3px solid var(--live);
+  }
+  .titlebar h1{font-size:16px; margin:0; font-weight:700;}
+  .titlebar .sub{font-size:12px; color:#9fb3d9; margin-top:3px;}
+  .nav-links{display:flex; align-items:center; gap:16px;}
+  .nav-links a{color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;}
+  .nav-links a:hover{color:#fff;}
+
+  .page-wrap{max-width:1200px; margin:22px auto; padding:0 18px 40px;}
+
+  .disclaimer{
+    background:var(--live-soft); border:1px solid rgba(213,0,50,.25); color:var(--live);
+    border-radius:var(--radius-sm); padding:10px 14px; font-size:12.5px; margin-bottom:20px; line-height:1.5;
+  }
+
+  .card{background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--grid-strong); padding:20px; margin-bottom:20px;}
+  .card h2{font-size:14px; margin:0 0 14px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.4px;}
+  .status-line{font-size:13px; color:var(--sub); margin-bottom:14px;}
+
+  /* Picks table */
+  .pool-list{display:flex; flex-direction:column; gap:6px;}
+  .pool-row{
+    display:grid; grid-template-columns:130px 1fr 90px 90px 110px; align-items:center; gap:12px;
+    padding:9px 12px; border:1px solid var(--grid); border-radius:var(--radius-sm); font-size:12.5px;
+  }
+  .pool-row.head{color:var(--sub); font-weight:600; text-transform:uppercase; font-size:10.5px; letter-spacing:.3px; border:none; padding:0 12px;}
+  .pool-teams{font-weight:700;}
+  .pool-source{color:var(--sub); font-size:11.5px;}
+  .pool-source.tiebreak{color:var(--warn);}
+  .pool-form{font-family:var(--font-mono); font-size:11.5px; color:var(--sub);}
+  .pool-pick{font-weight:700; color:var(--win); text-align:right;}
+  .status-badge{
+    font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;
+    padding:2px 6px; border-radius:99px; margin-left:6px; vertical-align:middle;
+  }
+  .status-badge.live{background:var(--live-soft); color:var(--live);}
+  .status-badge.pre{background:var(--accent-soft); color:var(--accent);}
+
+  /* Section controls */
+  .section-head{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;}
+  .section-head h2{margin:0;}
+  .section-note{font-size:12px; color:var(--sub);}
+
+  .parlay-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:14px;}
+  .parlay-card{border:1px solid var(--grid-strong); border-radius:var(--radius); padding:15px; background:var(--colhead-bg);}
+  .parlay-card.best{border-color:var(--win); background:var(--win-soft);}
+  .parlay-rank{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--sub); margin-bottom:8px;}
+  .parlay-card.best .parlay-rank{color:var(--win);}
+  .parlay-legs{list-style:none; margin:0 0 12px; padding:0; display:flex; flex-direction:column; gap:6px;}
+  .parlay-legs li{font-size:12.5px; display:flex; justify-content:space-between; gap:8px;}
+  .parlay-legs .leg-teams{color:var(--sub);}
+  .parlay-legs .leg-pick{font-weight:700;}
+  .parlay-combined{display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px dashed var(--grid-strong); font-size:12.5px;}
+  .parlay-combined .value{font-family:var(--font-mono); font-weight:700; font-size:15px; color:var(--accent);}
+  .parlay-card.best .parlay-combined .value{color:var(--win);}
+
+  .empty-state{color:var(--sub); font-size:13px; padding:20px; text-align:center;}
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <div>
+    <h1>MLB Best Bet — H2H Parlay Combinations</h1>
+    <div class="sub" id="rangeSub">Loading tonight's slate and season data from ESPN…</div>
+  </div>
+  <div class="nav-links">
+    <a href="index.html">← Schedule sheet</a>
+    <a href="parlays.html">Parlay builder</a>
+  </div>
+</div>
+
+<div class="page-wrap">
+
+  <div class="disclaimer">
+    <strong>What this is:</strong> each pick is tonight's real head-to-head leader between the two teams — the same "H2H Outcome Winner" logic as the schedule sheet's column G. When the season series is tied, or these two teams haven't played yet, the pick falls back to a blend of season win % and each team's last-10-games form. Not real sportsbook odds or payouts, and not betting advice — entertainment only.
+  </div>
+
+  <div class="card">
+    <h2>Tonight's games — H2H picks</h2>
+    <div class="status-line" id="poolStatus">Loading…</div>
+    <div class="pool-list" id="poolList">
+      <div class="pool-row head">
+        <div>Matchup</div><div>H2H / Basis</div><div>Season</div><div>Last 10</div><div style="text-align:right;">Pick</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-head"><h2>4-game parlays</h2><span class="section-note">10 combinations, ranked by model confidence</span></div>
+    <div class="parlay-grid" id="parlays4"><div class="empty-state">Loading…</div></div>
+  </div>
+
+  <div class="card">
+    <div class="section-head"><h2>5-game parlays</h2><span class="section-note">10 combinations, ranked by model confidence</span></div>
+    <div class="parlay-grid" id="parlays5"><div class="empty-state">Loading…</div></div>
+  </div>
+
+  <div class="card">
+    <div class="section-head"><h2>6-game parlays</h2><span class="section-note">10 combinations, ranked by model confidence</span></div>
+    <div class="parlay-grid" id="parlays6"><div class="empty-state">Loading…</div></div>
+  </div>
+
+</div>
+
+<script>
+const TEAM_IDS = {
+  BAL:1, BOS:2, LAA:3, CWS:4, CLE:5, DET:6, KC:7, MIL:8, MIN:9, NYY:10,
+  ATH:11, SEA:12, TEX:13, TOR:14, ATL:15, CHC:16, CIN:17, HOU:18, LAD:19, WSH:20,
+  NYM:21, PHI:22, PIT:23, STL:24, SD:25, SF:26, COL:27, MIA:28, AZ:29, TB:30
+};
+const FROM_ESPN = { ARI:'AZ', CHW:'CWS' };
+function toDisplay(abbr){ return FROM_ESPN[abbr] || abbr; }
+
+let SEASON_DATA = [];
+let STANDINGS = {};   // team -> {w,l} season-to-date
+let LAST10 = {};      // team -> {w,l} over their last 10 completed games
+let POOL = [];         // tonight's eligible games with computed picks
+
+function todayEspnStr(){
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function fetchTeamSchedule(id){
+  try{
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${id}/schedule?season=2026&seasontype=2`);
+    if(!res.ok) return [];
+    const json = await res.json();
+    const games = [];
+    (json.events || []).forEach(ev => {
+      const comp = ev.competitions && ev.competitions[0];
+      if(!comp) return;
+      const state = comp.status && comp.status.type ? comp.status.type.state : '';
+      if(state !== 'post') return;
+      const competitors = comp.competitors || [];
+      const homeC = competitors.find(c => c.homeAway === 'home');
+      const awayC = competitors.find(c => c.homeAway === 'away');
+      if(!homeC || !awayC) return;
+      const homeAbbr = toDisplay(homeC.team.abbreviation);
+      const awayAbbr = toDisplay(awayC.team.abbreviation);
+      let winner = '—';
+      if(homeC.winner) winner = homeAbbr;
+      else if(awayC.winner) winner = awayAbbr;
+      games.push({ id: ev.id, date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner });
+    });
+    return games;
+  } catch(e){ console.error('schedule fetch failed', id, e); return []; }
+}
+
+async function fetchFullSeason(){
+  const ids = Object.values(TEAM_IDS);
+  const results = await Promise.all(ids.map(id => fetchTeamSchedule(id)));
+  const byId = new Map();
+  results.flat().forEach(g => byId.set(g.id, g));
+  return Array.from(byId.values());
+}
+
+function computeStandings(rows){
+  const record = {};
+  rows.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    const loser = r.winner === r.away ? r.home : r.away;
+    record[r.winner] = record[r.winner] || { w:0, l:0 };
+    record[loser] = record[loser] || { w:0, l:0 };
+    record[r.winner].w++;
+    record[loser].l++;
+  });
+  return record;
+}
+
+// Each team's record over their own last 10 completed games (not last 10 calendar
+// days — some teams may have doubleheaders or off-days, so this walks each team's
+// own game log).
+function computeLast10(rows){
+  const byTeam = {};
+  rows.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    [r.away, r.home].forEach(t => { (byTeam[t] = byTeam[t] || []).push(r); });
+  });
+  const result = {};
+  Object.keys(byTeam).forEach(team => {
+    const games = byTeam[team].slice().sort((a,b) => a.date.localeCompare(b.date)).slice(-10);
+    let w = 0, l = 0;
+    games.forEach(g => { if(g.winner === team) w++; else l++; });
+    result[team] = { w, l };
+  });
+  return result;
+}
+
+function computeH2H(teamA, teamB){
+  let winsA = 0, winsB = 0;
+  SEASON_DATA.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    const pair = new Set([r.away, r.home]);
+    if(!pair.has(teamA) || !pair.has(teamB)) return;
+    if(r.winner === teamA) winsA++;
+    else if(r.winner === teamB) winsB++;
+  });
+  return { winsA, winsB, total: winsA + winsB };
+}
+
+function pct(rec){
+  if(!rec) return 0.5;
+  const g = rec.w + rec.l;
+  return g > 0 ? rec.w / g : 0.5;
+}
+
+// The core "Best Bet" model: H2H record decides it whenever there's a clear
+// leader. When tied or the teams haven't met yet, fall back to a blend of season
+// win% and last-10-games form (recent form weighted equally with full season).
+function pickForGame(away, home, status, statusText){
+  const h2h = computeH2H(away, home);
+  const seasonA = STANDINGS[away] || {w:0,l:0}, seasonB = STANDINGS[home] || {w:0,l:0};
+  const l10A = LAST10[away] || {w:0,l:0}, l10B = LAST10[home] || {w:0,l:0};
+  const blendA = pct(seasonA) * 0.5 + pct(l10A) * 0.5;
+  const blendB = pct(seasonB) * 0.5 + pct(l10B) * 0.5;
+
+  let pick, source, isTiebreak = false, h2hText;
+
+  if(h2h.total > 0 && h2h.winsA !== h2h.winsB){
+    pick = h2h.winsA > h2h.winsB ? away : home;
+    h2hText = `${pick} leads ${Math.max(h2h.winsA,h2h.winsB)}-${Math.min(h2h.winsA,h2h.winsB)}`;
+    source = h2hText;
+  } else if(h2h.total > 0){
+    pick = blendA >= blendB ? away : home;
+    h2hText = `Tied ${h2h.winsA}-${h2h.winsB}`;
+    source = `${h2hText} — tiebreak via season+L10 form`;
+    isTiebreak = true;
+  } else {
+    pick = blendA >= blendB ? away : home;
+    h2hText = 'No meetings yet';
+    source = `No H2H — projected via season+L10 form`;
+    isTiebreak = true;
+  }
+
+  // Confidence is only used to rank/sort the generated parlays — it's not
+  // presented as a real probability. Weighted mostly on H2H win share when one
+  // exists, otherwise on the season+L10 blend.
+  let confidence;
+  if(h2h.total > 0 && h2h.winsA !== h2h.winsB){
+    const h2hPct = Math.max(h2h.winsA, h2h.winsB) / h2h.total;
+    confidence = h2hPct * 0.65 + Math.max(blendA, blendB) * 0.35;
+  } else {
+    confidence = Math.max(blendA, blendB);
+  }
+
+  return {
+    away, home, pick, source, isTiebreak, status, statusText, confidence,
+    seasonText: `${away} (${seasonA.w}-${seasonA.l}) / ${home} (${seasonB.w}-${seasonB.l})`,
+    l10Text: `${away} (${l10A.w}-${l10A.l}) / ${home} (${l10B.w}-${l10B.l})`
+  };
+}
+
+async function fetchTodayGames(){
+  const dateParam = todayEspnStr();
+  try{
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateParam}`);
+    if(!res.ok) return [];
+    const json = await res.json();
+    const games = [];
+    (json.events || []).forEach(ev => {
+      const comp = ev.competitions && ev.competitions[0];
+      if(!comp) return;
+      const competitors = comp.competitors || [];
+      const homeC = competitors.find(c => c.homeAway === 'home');
+      const awayC = competitors.find(c => c.homeAway === 'away');
+      if(!homeC || !awayC) return;
+      const state = comp.status && comp.status.type ? comp.status.type.state : 'pre';
+      const shortDetail = comp.status && comp.status.type ? comp.status.type.shortDetail : '';
+      games.push({
+        away: toDisplay(awayC.team.abbreviation),
+        home: toDisplay(homeC.team.abbreviation),
+        status: state, statusText: shortDetail
+      });
+    });
+    return games;
+  } catch(e){ console.error('today fetch failed', e); return []; }
+}
+
+function renderPool(){
+  const list = document.getElementById('poolList');
+  const header = list.querySelector('.pool-row.head');
+  list.innerHTML = '';
+  list.appendChild(header);
+
+  if(POOL.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'No live or upcoming games right now.';
+    list.appendChild(empty);
+    return;
+  }
+
+  POOL.forEach(g => {
+    const badge = g.status === 'in'
+      ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
+      : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
+    const row = document.createElement('div');
+    row.className = 'pool-row';
+    row.innerHTML = `
+      <div class="pool-teams">${g.away} @ ${g.home}${badge}</div>
+      <div class="pool-source ${g.isTiebreak ? 'tiebreak' : ''}">${g.source}</div>
+      <div class="pool-form">${g.seasonText}</div>
+      <div class="pool-form">${g.l10Text}</div>
+      <div class="pool-pick">${g.pick}</div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+function shuffled(arr){
+  const a = arr.slice();
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Generates up to 10 distinct combinations of exactly `size` games from the pool.
+function generateCombos(size, count){
+  if(POOL.length < size) return [];
+  const basePool = POOL.map((_, i) => i);
+  const seen = new Set();
+  const combos = [];
+  let attempts = 0;
+  while(combos.length < count && attempts < count * 40){
+    attempts++;
+    const legsIdx = shuffled(basePool).slice(0, size).sort((a,b) => a - b);
+    const sig = legsIdx.join(',');
+    if(seen.has(sig)) continue;
+    seen.add(sig);
+    const legs = legsIdx.map(i => POOL[i]);
+    const combined = legs.reduce((p, g) => p * g.confidence, 1);
+    combos.push({ legs, combined });
+  }
+  combos.sort((a, b) => b.combined - a.combined);
+  return combos;
+}
+
+function renderCombos(containerId, combos, size){
+  const wrap = document.getElementById(containerId);
+  if(POOL.length < size){
+    wrap.innerHTML = `<div class="empty-state">Need at least ${size} eligible games tonight for ${size}-game parlays — only ${POOL.length} available.</div>`;
+    return;
+  }
+  if(combos.length === 0){
+    wrap.innerHTML = '<div class="empty-state">Could not build combinations from tonight\'s pool.</div>';
+    return;
+  }
+  wrap.innerHTML = combos.map((p, i) => `
+    <div class="parlay-card ${i === 0 ? 'best' : ''}">
+      <div class="parlay-rank">${i === 0 ? 'Highest confidence' : `Combo ${i + 1}`}</div>
+      <ul class="parlay-legs">
+        ${p.legs.map(g => `<li><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
+      </ul>
+      <div class="parlay-combined">
+        <span>Model confidence</span>
+        <span class="value">${(p.combined * 100).toFixed(1)}%</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function init(){
+  document.getElementById('poolStatus').textContent = 'Loading season data from ESPN (30 teams)…';
+
+  const [season, today] = await Promise.all([fetchFullSeason(), fetchTodayGames()]);
+  SEASON_DATA = season;
+  STANDINGS = computeStandings(SEASON_DATA);
+  LAST10 = computeLast10(SEASON_DATA);
+
+  if(today.length === 0){
+    document.getElementById('rangeSub').textContent = 'No games found for tonight, or ESPN data unavailable.';
+    document.getElementById('poolStatus').textContent = 'No games available.';
+    return;
+  }
+
+  const eligible = today.filter(g => g.status !== 'post');
+  const finishedCount = today.length - eligible.length;
+  POOL = eligible.map(g => pickForGame(g.away, g.home, g.status, g.statusText));
+
+  document.getElementById('rangeSub').textContent = `${today.length} games tonight (${finishedCount} final, excluded) · model built from ${SEASON_DATA.length} completed games this season`;
+  document.getElementById('poolStatus').textContent = `${POOL.length} live or upcoming games eligible for picks.`;
+
+  renderPool();
+  renderCombos('parlays4', generateCombos(4, 10), 4);
+  renderCombos('parlays5', generateCombos(5, 10), 5);
+  renderCombos('parlays6', generateCombos(6, 10), 6);
+}
+
+init();
+</script>
+</body>
+</html>
