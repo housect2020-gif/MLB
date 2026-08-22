@@ -89,6 +89,7 @@
     background:var(--win-soft);
   }
   .lock-teams{font-weight:700;}
+  .score-note{font-weight:500; font-size:11px; color:var(--sub); font-family:var(--font-mono); margin-left:6px;}
   .lock-reason{color:var(--sub); font-size:11.5px; flex:1; text-align:right;}
   .lock-pick{font-weight:800; color:var(--win); margin-left:12px;}
 
@@ -306,10 +307,14 @@ async function fetchTodayGames(){
       if(!homeC || !awayC) return;
       const state = comp.status && comp.status.type ? comp.status.type.state : 'pre';
       const shortDetail = comp.status && comp.status.type ? comp.status.type.shortDetail : '';
+      // ESPN's score field is an object ({value, displayValue}), not a plain number.
+      const awayScore = (awayC.score && (awayC.score.displayValue ?? awayC.score.value)) ?? null;
+      const homeScore = (homeC.score && (homeC.score.displayValue ?? homeC.score.value)) ?? null;
       games.push({
         away: toDisplay(awayC.team.abbreviation),
         home: toDisplay(homeC.team.abbreviation),
-        status: state, statusText: shortDetail
+        status: state, statusText: shortDetail,
+        awayScore, homeScore
       });
     });
     return games;
@@ -384,12 +389,12 @@ function renderTop10Checks(){
 // selected top-10 team, that team wins; (2) if both sides are selected top-10
 // teams, use this season's head-to-head record; (3) if H2H is tied, compare the
 // home team's home record against the away team's road record.
-function pickLockedGame(away, home, status, statusText){
+function pickLockedGame(away, home, status, statusText, awayScore, homeScore){
   const awayIn = SELECTED_TOP10.has(away);
   const homeIn = SELECTED_TOP10.has(home);
   if(!awayIn && !homeIn) return null;
 
-  const meta = { away, home, status, statusText };
+  const meta = { away, home, status, statusText, awayScore, homeScore };
 
   if(awayIn && !homeIn){
     const r = RANKINGS.find(x => x.team === away);
@@ -420,7 +425,7 @@ function pickLockedGame(away, home, status, statusText){
 function renderLocks(){
   const wrap = document.getElementById('lockList');
   const locks = TODAY_GAMES
-    .map(g => pickLockedGame(g.away, g.home, g.status, g.statusText))
+    .map(g => pickLockedGame(g.away, g.home, g.status, g.statusText, g.awayScore, g.homeScore))
     .filter(Boolean);
 
   if(locks.length === 0){
@@ -434,9 +439,11 @@ function renderLocks(){
     const badge = g.status === 'in'
       ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
       : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
+    const hasScore = (g.status === 'in' || g.status === 'post') && g.awayScore !== null && g.homeScore !== null;
+    const scoreText = hasScore ? `<span class="score-note">(${g.away} ${g.awayScore}-${g.homeScore} ${g.home})</span>` : '';
     return `
       <div class="lock-row">
-        <div class="lock-teams">${g.away} @ ${g.home}${badge}</div>
+        <div class="lock-teams">${g.away} @ ${g.home}${scoreText}${badge}</div>
         <div class="lock-reason">${g.reason}</div>
         <div class="lock-pick">${g.pick}</div>
       </div>
@@ -445,7 +452,7 @@ function renderLocks(){
 }
 
 function currentLocks(){
-  return TODAY_GAMES.map(g => pickLockedGame(g.away, g.home, g.status, g.statusText)).filter(Boolean);
+  return TODAY_GAMES.map(g => pickLockedGame(g.away, g.home, g.status, g.statusText, g.awayScore, g.homeScore)).filter(Boolean);
 }
 
 function renderWildcards(){
