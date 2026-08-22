@@ -81,6 +81,14 @@
   .top10-check input{margin:0;}
   .top10-check.picked{border-color:var(--win); background:var(--win-soft);}
   .top10-check .rank-tag{font-family:var(--font-mono); font-size:10.5px; color:var(--sub);}
+  /* When a checked team is playing another checked team, its pill switches from
+     the default green to that matchup's color — same palette as the lock rows,
+     kept in sync via updateMatchupColors(). */
+  .top10-check.matchup-0{border-color:#c9b3f5; background:#ece4fb;}
+  .top10-check.matchup-1{border-color:#a9d8ec; background:#dff1fb;}
+  .top10-check.matchup-2{border-color:#f0b9d1; background:#fbe4ee;}
+  .top10-check.matchup-3{border-color:#edd28f; background:#fdf0d5;}
+  .top10-check.matchup-4{border-color:#a5e5d3; background:#dcf7f0;}
 
   .lock-list{display:flex; flex-direction:column; gap:6px;}
   .lock-row{
@@ -350,9 +358,21 @@ async function fetchTodayGames(){
       if(!homeC || !awayC) return;
       const state = comp.status && comp.status.type ? comp.status.type.state : 'pre';
       const shortDetail = comp.status && comp.status.type ? comp.status.type.shortDetail : '';
-      // ESPN's score field is an object ({value, displayValue}), not a plain number.
-      const awayScore = (awayC.score && (awayC.score.displayValue ?? awayC.score.value)) ?? null;
-      const homeScore = (homeC.score && (homeC.score.displayValue ?? homeC.score.value)) ?? null;
+      // Handles both possible API shapes — score as an object ({value, displayValue})
+      // or as a raw string/number — and falls back to 0 for a live/final game
+      // whose score field is temporarily missing (e.g. a fresh 0-0 game), rather
+      // than silently showing nothing.
+      const extractScore = (scoreField) => {
+        if(scoreField === undefined || scoreField === null) return null;
+        if(typeof scoreField === 'object') return scoreField.displayValue ?? scoreField.value ?? null;
+        return scoreField;
+      };
+      let awayScore = extractScore(awayC.score);
+      let homeScore = extractScore(homeC.score);
+      if(state === 'in' || state === 'post'){
+        if(awayScore === null) awayScore = 0;
+        if(homeScore === null) homeScore = 0;
+      }
       games.push({
         away: toDisplay(awayC.team.abbreviation),
         home: toDisplay(homeC.team.abbreviation),
@@ -388,6 +408,39 @@ function renderStandings(){
   grid.appendChild(makeCol(RANKINGS.slice(20, 30)));
 }
 
+// Computes one color per distinct top-10-vs-top-10 matchup happening tonight
+// (in the order those matchups appear), and applies it to both the checkbox
+// pills above and the lock rows below, so the two stay visually in sync. Called
+// on initial render and every time a checkbox selection changes.
+function pairKey(a, b){ return [a, b].sort().join('-'); }
+
+function updateMatchupColors(){
+  const colorByPair = new Map();
+  TODAY_GAMES.forEach(g => {
+    if(SELECTED_TOP10.has(g.away) && SELECTED_TOP10.has(g.home)){
+      const key = pairKey(g.away, g.home);
+      if(!colorByPair.has(key)) colorByPair.set(key, colorByPair.size % 5);
+    }
+  });
+
+  const colorByTeam = new Map();
+  TODAY_GAMES.forEach(g => {
+    if(SELECTED_TOP10.has(g.away) && SELECTED_TOP10.has(g.home)){
+      const idx = colorByPair.get(pairKey(g.away, g.home));
+      colorByTeam.set(g.away, idx);
+      colorByTeam.set(g.home, idx);
+    }
+  });
+
+  document.querySelectorAll('.top10-check').forEach(el => {
+    el.classList.remove('matchup-0', 'matchup-1', 'matchup-2', 'matchup-3', 'matchup-4');
+    const team = el.dataset.team;
+    if(colorByTeam.has(team)) el.classList.add(`matchup-${colorByTeam.get(team)}`);
+  });
+
+  return colorByPair;
+}
+
 function renderTop10Checks(){
   const wrap = document.getElementById('top10Checks');
   const playingToday = new Set();
@@ -421,6 +474,7 @@ function renderTop10Checks(){
       const team = el.dataset.team;
       if(el.querySelector('input').checked){ SELECTED_TOP10.add(team); el.classList.add('picked'); }
       else { SELECTED_TOP10.delete(team); el.classList.remove('picked'); }
+      updateMatchupColors();
       renderLocks();
       renderWildcards();
       renderCombos();
@@ -477,19 +531,10 @@ function renderLocks(){
     return;
   }
 
-  // Assign each distinct top-10-vs-top-10 matchup its own color class, in the
-  // order those matchups appear, so multiple ranked-vs-ranked games tonight are
-  // each visually distinguishable from one another (not just from regular locks).
-  const matchupColorClass = new Map();
-  locks.forEach(g => {
-    if(!g.bothTop10) return;
-    const key = [g.away, g.home].sort().join('-');
-    if(!matchupColorClass.has(key)){
-      matchupColorClass.set(key, `matchup-${matchupColorClass.size % 5}`);
-    }
-  });
-
-  const matchupCount = matchupColorClass.size;
+  // Same matchup color assignment used for the checkbox pills above, so a
+  // team's pill and its lock row below always match.
+  const colorByPair = updateMatchupColors();
+  const matchupCount = colorByPair.size;
   document.getElementById('lockStatus').textContent = `${locks.length} locked pick${locks.length === 1 ? '' : 's'} from your selected top-10 teams`
     + (matchupCount > 0 ? ` — ${matchupCount} ranked-vs-ranked matchup${matchupCount === 1 ? '' : 's'} color-coded below.` : '.');
 
@@ -499,7 +544,7 @@ function renderLocks(){
       : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
     const hasScore = (g.status === 'in' || g.status === 'post') && g.awayScore !== null && g.homeScore !== null;
     const scoreText = hasScore ? `<span class="score-note">(${g.away} ${g.awayScore}-${g.homeScore} ${g.home})</span>` : '';
-    const rowClass = g.bothTop10 ? matchupColorClass.get([g.away, g.home].sort().join('-')) : 'standard';
+    const rowClass = g.bothTop10 ? `matchup-${colorByPair.get(pairKey(g.away, g.home))}` : 'standard';
     return `
       <div class="lock-row ${rowClass}">
         <div class="lock-teams">${g.away} @ ${g.home}${scoreText}${badge}</div>
