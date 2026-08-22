@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLB Guarantee — Locks &amp; Wildcards</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page-bg: #eef1f6;
+    --surface: #ffffff;
+    --grid: #e3e7ee;
+    --grid-strong: #ccd3de;
+    --header-bg: linear-gradient(135deg, #002d72 0%, #001a46 100%);
+    --header-fg: #ffffff;
+    --colhead-bg: #f2f4f8;
+    --accent: #002d72;
+    --accent-soft: rgba(0,45,114,.08);
+    --live: #d50032;
+    --live-soft: rgba(213,0,50,.09);
+    --win: #0a7d3f;
+    --win-soft: rgba(10,125,63,.10);
+    --warn: #c2660a;
+    --warn-soft: rgba(194,102,10,.13);
+    --text: #14213b;
+    --sub: #64708a;
+    --radius: 12px;
+    --radius-sm: 7px;
+    --shadow: 0 1px 2px rgba(0,20,60,.05), 0 8px 24px -12px rgba(0,20,60,.22);
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', 'Roboto Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--page-bg);font-family:var(--font-ui);color:var(--text);}
+
+  .titlebar{
+    background:var(--header-bg); color:var(--header-fg);
+    padding:16px 22px; display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:10px; box-shadow:0 2px 10px rgba(0,20,60,.3);
+    border-bottom:3px solid var(--live);
+  }
+  .titlebar h1{font-size:16px; margin:0; font-weight:700;}
+  .titlebar .sub{font-size:12px; color:#9fb3d9; margin-top:3px;}
+  .nav-links{display:flex; align-items:center; gap:16px;}
+  .nav-links a{color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;}
+  .nav-links a:hover{color:#fff;}
+
+  .page-wrap{max-width:1200px; margin:22px auto; padding:0 18px 40px;}
+
+  .disclaimer{
+    background:var(--live-soft); border:1px solid rgba(213,0,50,.25); color:var(--live);
+    border-radius:var(--radius-sm); padding:10px 14px; font-size:12.5px; margin-bottom:20px; line-height:1.5;
+  }
+
+  .card{background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--grid-strong); padding:20px; margin-bottom:20px;}
+  .card h2{font-size:14px; margin:0 0 14px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.4px;}
+  .status-line{font-size:13px; color:var(--sub); margin-bottom:14px;}
+
+  /* Standings */
+  .standings-grid{display:grid; grid-template-columns:1fr 1fr; gap:24px;}
+  .standings-col{display:flex; flex-direction:column; gap:2px;}
+  .standings-row{
+    display:grid; grid-template-columns:28px 1fr 70px 60px; align-items:center; gap:8px;
+    padding:6px 8px; border-radius:6px; font-size:13px;
+  }
+  .standings-row.head{color:var(--sub); font-size:10.5px; text-transform:uppercase; font-weight:700; letter-spacing:.3px;}
+  .standings-row:not(.head):nth-child(odd){background:var(--colhead-bg);}
+  .standings-row .rank{font-family:var(--font-mono); color:var(--sub); font-weight:600;}
+  .standings-row .team{font-weight:700;}
+  .standings-row.top10 .team{color:var(--win);}
+  .standings-row .rec{font-family:var(--font-mono); color:var(--sub); font-size:12px;}
+  .standings-row .pctval{font-family:var(--font-mono); font-weight:600; font-size:12px;}
+
+  /* Top-10 picker */
+  .top10-checks{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;}
+  .top10-check{
+    display:flex; align-items:center; gap:7px; font-size:13px; padding:7px 12px;
+    border:1px solid var(--grid); border-radius:99px; cursor:pointer; background:var(--colhead-bg);
+  }
+  .top10-check input{margin:0;}
+  .top10-check.picked{border-color:var(--win); background:var(--win-soft);}
+  .top10-check .rank-tag{font-family:var(--font-mono); font-size:10.5px; color:var(--sub);}
+
+  .lock-list{display:flex; flex-direction:column; gap:6px;}
+  .lock-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:9px 12px; border:1px solid var(--grid); border-radius:var(--radius-sm); font-size:13px;
+    background:var(--win-soft);
+  }
+  .lock-teams{font-weight:700;}
+  .lock-reason{color:var(--sub); font-size:11.5px; flex:1; text-align:right;}
+  .lock-pick{font-weight:800; color:var(--win); margin-left:12px;}
+
+  /* Wildcard picker */
+  .wild-checks{display:flex; flex-direction:column; gap:8px;}
+  .wild-check{
+    display:flex; align-items:center; gap:9px; font-size:13px; padding:9px 12px;
+    border:1px solid var(--grid); border-radius:var(--radius-sm); cursor:pointer; background:var(--colhead-bg);
+  }
+  .wild-check input{margin:0;}
+  .wild-check.picked{border-color:var(--warn); background:var(--warn-soft);}
+  .wild-hint{font-size:12px; color:var(--sub); margin-bottom:10px;}
+
+  /* Combos */
+  .combo-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:14px;}
+  .combo-card{border:1px solid var(--grid-strong); border-radius:var(--radius); padding:15px; background:var(--colhead-bg);}
+  .combo-rank{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--sub); margin-bottom:8px;}
+  .combo-legs{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px;}
+  .combo-legs li{font-size:12.5px; display:flex; justify-content:space-between; gap:8px;}
+  .combo-legs .leg-teams{color:var(--sub);}
+  .combo-legs .leg-pick{font-weight:700;}
+  .combo-legs li.wildcard .leg-pick{color:var(--warn);}
+  .combo-legs li.locked .leg-pick{color:var(--win);}
+
+  .empty-state{color:var(--sub); font-size:13px; padding:20px; text-align:center;}
+  .status-badge{
+    font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;
+    padding:2px 6px; border-radius:99px; margin-left:6px; vertical-align:middle;
+  }
+  .status-badge.live{background:var(--live-soft); color:var(--live);}
+  .status-badge.pre{background:var(--accent-soft); color:var(--accent);}
+
+  @media (max-width:640px){ .standings-grid{grid-template-columns:1fr;} }
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <div>
+    <h1>MLB Guarantee — Locks &amp; Wildcards</h1>
+    <div class="sub" id="rangeSub">Loading standings and tonight's slate from ESPN…</div>
+  </div>
+  <div class="nav-links">
+    <a href="index.html">← Schedule sheet</a>
+    <a href="parlays.html">Parlay builder</a>
+    <a href="bestbet.html">Best Bet</a>
+  </div>
+</div>
+
+<div class="page-wrap">
+
+  <div class="disclaimer">
+    <strong>What this is:</strong> "locked" picks are today's real top-10-by-record teams winning their games — when two top-10 teams play each other, the pick is decided by their actual head-to-head record this season, and if that's tied, by comparing the home team's home record against the away team's road record. Wildcard games (between two teams outside the top 10) are shown as both possible outcomes so you can choose. Not real odds, not betting advice — entertainment only.
+  </div>
+
+  <div class="card">
+    <h2>Current standings</h2>
+    <div class="status-line" id="standingsStatus">Loading…</div>
+    <div class="standings-grid" id="standingsGrid"></div>
+  </div>
+
+  <div class="card">
+    <h2>Top-10 lock picks</h2>
+    <div class="status-line" id="lockStatus">Loading…</div>
+    <div class="top10-checks" id="top10Checks"></div>
+    <div class="lock-list" id="lockList"></div>
+  </div>
+
+  <div class="card">
+    <h2>Wildcard games</h2>
+    <div class="wild-hint">Games tonight not involving a top-10 team. Pick 1 or 2 — each shows up as both possible outcomes below.</div>
+    <div class="wild-checks" id="wildChecks"></div>
+  </div>
+
+  <div class="card">
+    <h2>Guarantee combos</h2>
+    <div class="combo-grid" id="comboResults"><div class="empty-state">Select at least one wildcard game above to see combos.</div></div>
+  </div>
+
+</div>
+
+<script>
+const TEAM_IDS = {
+  BAL:1, BOS:2, LAA:3, CWS:4, CLE:5, DET:6, KC:7, MIL:8, MIN:9, NYY:10,
+  ATH:11, SEA:12, TEX:13, TOR:14, ATL:15, CHC:16, CIN:17, HOU:18, LAD:19, WSH:20,
+  NYM:21, PHI:22, PIT:23, STL:24, SD:25, SF:26, COL:27, MIA:28, AZ:29, TB:30
+};
+const FROM_ESPN = { ARI:'AZ', CHW:'CWS' };
+function toDisplay(abbr){ return FROM_ESPN[abbr] || abbr; }
+
+let SEASON_DATA = [];
+let STANDINGS = {};     // team -> {w,l}
+let SPLITS = {};        // team -> {home:{w,l}, road:{w,l}}
+let RANKINGS = [];      // [{team,w,l,pct,rank}], sorted best to worst
+let TOP10 = [];         // top 10 team abbrs, in rank order
+let TODAY_GAMES = [];   // eligible (non-final) games tonight
+let SELECTED_TOP10 = new Set(); // which top-10 teams the user has checked
+let SELECTED_WILD = new Set();  // indices into wildcardGames the user has checked
+let wildcardGames = [];
+
+function todayEspnStr(){
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function fetchTeamSchedule(id){
+  try{
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${id}/schedule?season=2026&seasontype=2`);
+    if(!res.ok) return [];
+    const json = await res.json();
+    const games = [];
+    (json.events || []).forEach(ev => {
+      const comp = ev.competitions && ev.competitions[0];
+      if(!comp) return;
+      const state = comp.status && comp.status.type ? comp.status.type.state : '';
+      if(state !== 'post') return;
+      const competitors = comp.competitors || [];
+      const homeC = competitors.find(c => c.homeAway === 'home');
+      const awayC = competitors.find(c => c.homeAway === 'away');
+      if(!homeC || !awayC) return;
+      const homeAbbr = toDisplay(homeC.team.abbreviation);
+      const awayAbbr = toDisplay(awayC.team.abbreviation);
+      let winner = '—';
+      if(homeC.winner) winner = homeAbbr;
+      else if(awayC.winner) winner = awayAbbr;
+      games.push({ id: ev.id, date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner });
+    });
+    return games;
+  } catch(e){ console.error('schedule fetch failed', id, e); return []; }
+}
+
+async function fetchFullSeason(){
+  const ids = Object.values(TEAM_IDS);
+  const results = await Promise.all(ids.map(id => fetchTeamSchedule(id)));
+  const byId = new Map();
+  results.flat().forEach(g => byId.set(g.id, g));
+  return Array.from(byId.values());
+}
+
+function computeStandings(rows){
+  const record = {};
+  rows.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    const loser = r.winner === r.away ? r.home : r.away;
+    record[r.winner] = record[r.winner] || { w:0, l:0 };
+    record[loser] = record[loser] || { w:0, l:0 };
+    record[r.winner].w++;
+    record[loser].l++;
+  });
+  return record;
+}
+
+// Each team's record split by home vs road — used as the second-level tiebreak
+// when two top-10 teams are tied on head-to-head.
+function computeSplits(rows){
+  const splits = {};
+  rows.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    splits[r.home] = splits[r.home] || { home:{w:0,l:0}, road:{w:0,l:0} };
+    splits[r.away] = splits[r.away] || { home:{w:0,l:0}, road:{w:0,l:0} };
+    if(r.winner === r.home){ splits[r.home].home.w++; splits[r.away].road.l++; }
+    else { splits[r.home].home.l++; splits[r.away].road.w++; }
+  });
+  return splits;
+}
+
+function computeH2H(teamA, teamB){
+  let winsA = 0, winsB = 0;
+  SEASON_DATA.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    const pair = new Set([r.away, r.home]);
+    if(!pair.has(teamA) || !pair.has(teamB)) return;
+    if(r.winner === teamA) winsA++;
+    else if(r.winner === teamB) winsB++;
+  });
+  return { winsA, winsB, total: winsA + winsB };
+}
+
+function pct(rec){ if(!rec) return 0; const g = rec.w + rec.l; return g > 0 ? rec.w / g : 0; }
+
+async function fetchTodayGames(){
+  const dateParam = todayEspnStr();
+  try{
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateParam}`);
+    if(!res.ok) return [];
+    const json = await res.json();
+    const games = [];
+    (json.events || []).forEach(ev => {
+      const comp = ev.competitions && ev.competitions[0];
+      if(!comp) return;
+      const competitors = comp.competitors || [];
+      const homeC = competitors.find(c => c.homeAway === 'home');
+      const awayC = competitors.find(c => c.homeAway === 'away');
+      if(!homeC || !awayC) return;
+      const state = comp.status && comp.status.type ? comp.status.type.state : 'pre';
+      const shortDetail = comp.status && comp.status.type ? comp.status.type.shortDetail : '';
+      games.push({
+        away: toDisplay(awayC.team.abbreviation),
+        home: toDisplay(homeC.team.abbreviation),
+        status: state, statusText: shortDetail
+      });
+    });
+    return games;
+  } catch(e){ console.error('today fetch failed', e); return []; }
+}
+
+function renderStandings(){
+  const grid = document.getElementById('standingsGrid');
+  const top10Set = new Set(TOP10);
+  const makeCol = (list) => {
+    const col = document.createElement('div');
+    col.className = 'standings-col';
+    const head = document.createElement('div');
+    head.className = 'standings-row head';
+    head.innerHTML = '<div>#</div><div>Team</div><div>W-L</div><div>Pct</div>';
+    col.appendChild(head);
+    list.forEach(r => {
+      const row = document.createElement('div');
+      row.className = 'standings-row' + (top10Set.has(r.team) ? ' top10' : '');
+      row.innerHTML = `<div class="rank">${r.rank}</div><div class="team">${r.team}</div><div class="rec">${r.w}-${r.l}</div><div class="pctval">${r.pct.toFixed(3).replace(/^0/,'')}</div>`;
+      col.appendChild(row);
+    });
+    return col;
+  };
+  grid.innerHTML = '';
+  grid.appendChild(makeCol(RANKINGS.slice(0, 15)));
+  grid.appendChild(makeCol(RANKINGS.slice(15, 30)));
+}
+
+function renderTop10Checks(){
+  const wrap = document.getElementById('top10Checks');
+  const playingToday = new Set();
+  TODAY_GAMES.forEach(g => { playingToday.add(g.away); playingToday.add(g.home); });
+
+  const relevant = TOP10.filter(t => playingToday.has(t));
+  if(relevant.length === 0){
+    wrap.innerHTML = '<div class="empty-state">None of tonight\'s top-10 teams are playing right now.</div>';
+    return;
+  }
+
+  wrap.innerHTML = relevant.map(team => {
+    const r = RANKINGS.find(x => x.team === team);
+    return `
+      <label class="top10-check picked" data-team="${team}">
+        <input type="checkbox" value="${team}" checked>
+        <span>${team}</span>
+        <span class="rank-tag">#${r.rank}</span>
+      </label>
+    `;
+  }).join('');
+
+  SELECTED_TOP10 = new Set(relevant);
+
+  wrap.querySelectorAll('.top10-check').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if(e.target.tagName !== 'INPUT'){
+        const cb = el.querySelector('input');
+        cb.checked = !cb.checked;
+      }
+      const team = el.dataset.team;
+      if(el.querySelector('input').checked){ SELECTED_TOP10.add(team); el.classList.add('picked'); }
+      else { SELECTED_TOP10.delete(team); el.classList.remove('picked'); }
+      renderLocks();
+      renderWildcards();
+      renderCombos();
+    });
+  });
+}
+
+// Decides the pick for one locked game. Priority: (1) if only one side is a
+// selected top-10 team, that team wins; (2) if both sides are selected top-10
+// teams, use this season's head-to-head record; (3) if H2H is tied, compare the
+// home team's home record against the away team's road record.
+function pickLockedGame(away, home){
+  const awayIn = SELECTED_TOP10.has(away);
+  const homeIn = SELECTED_TOP10.has(home);
+  if(!awayIn && !homeIn) return null;
+
+  if(awayIn && !homeIn){
+    const r = RANKINGS.find(x => x.team === away);
+    return { away, home, pick: away, reason: `${away} is #${r ? r.rank : '?'} — ${home} is unranked in the top 10` };
+  }
+  if(homeIn && !awayIn){
+    const r = RANKINGS.find(x => x.team === home);
+    return { away, home, pick: home, reason: `${home} is #${r ? r.rank : '?'} — ${away} is unranked in the top 10` };
+  }
+
+  // Both are selected top-10 teams playing each other.
+  const h2h = computeH2H(away, home);
+  if(h2h.total > 0 && h2h.winsA !== h2h.winsB){
+    const pick = h2h.winsA > h2h.winsB ? away : home;
+    return { away, home, pick, reason: `H2H: ${pick} leads ${Math.max(h2h.winsA,h2h.winsB)}-${Math.min(h2h.winsA,h2h.winsB)}` };
+  }
+  const homeSplit = (SPLITS[home] && SPLITS[home].home) || { w:0, l:0 };
+  const awaySplit = (SPLITS[away] && SPLITS[away].road) || { w:0, l:0 };
+  const homePct = pct(homeSplit), awayPct = pct(awaySplit);
+  const pick = homePct >= awayPct ? home : away;
+  const h2hNote = h2h.total > 0 ? `H2H tied ${h2h.winsA}-${h2h.winsB} — ` : 'No H2H meetings yet — ';
+  return {
+    away, home, pick,
+    reason: `${h2hNote}tiebreak: ${home} home ${homeSplit.w}-${homeSplit.l} vs ${away} road ${awaySplit.w}-${awaySplit.l}`
+  };
+}
+
+function renderLocks(){
+  const wrap = document.getElementById('lockList');
+  const locks = TODAY_GAMES
+    .map(g => pickLockedGame(g.away, g.home))
+    .filter(Boolean);
+
+  if(locks.length === 0){
+    wrap.innerHTML = '<div class="empty-state">No selected top-10 teams are playing right now.</div>';
+    document.getElementById('lockStatus').textContent = 'No locked picks yet.';
+    return;
+  }
+
+  document.getElementById('lockStatus').textContent = `${locks.length} locked pick${locks.length === 1 ? '' : 's'} from your selected top-10 teams.`;
+  wrap.innerHTML = locks.map(g => `
+    <div class="lock-row">
+      <div class="lock-teams">${g.away} @ ${g.home}</div>
+      <div class="lock-reason">${g.reason}</div>
+      <div class="lock-pick">${g.pick}</div>
+    </div>
+  `).join('');
+}
+
+function currentLocks(){
+  return TODAY_GAMES.map(g => pickLockedGame(g.away, g.home)).filter(Boolean);
+}
+
+function renderWildcards(){
+  const wrap = document.getElementById('wildChecks');
+  const lockedTeams = new Set();
+  TODAY_GAMES.forEach(g => {
+    if(SELECTED_TOP10.has(g.away) || SELECTED_TOP10.has(g.home)){
+      lockedTeams.add(g.away); lockedTeams.add(g.home);
+    }
+  });
+
+  wildcardGames = TODAY_GAMES.filter(g => !lockedTeams.has(g.away) && !lockedTeams.has(g.home));
+
+  if(wildcardGames.length === 0){
+    wrap.innerHTML = '<div class="empty-state">No wildcard games available right now — every remaining game involves a locked team.</div>';
+    SELECTED_WILD = new Set();
+    return;
+  }
+
+  wrap.innerHTML = wildcardGames.map((g, i) => {
+    const badge = g.status === 'in'
+      ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
+      : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
+    return `
+      <label class="wild-check" data-idx="${i}">
+        <input type="checkbox" value="${i}">
+        <span>${g.away} @ ${g.home}${badge}</span>
+      </label>
+    `;
+  }).join('');
+
+  SELECTED_WILD = new Set();
+  wrap.querySelectorAll('.wild-check').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if(e.target.tagName !== 'INPUT'){
+        const cb = el.querySelector('input');
+        if(!cb.checked && SELECTED_WILD.size >= 2){ return; } // cap at 2
+        cb.checked = !cb.checked;
+      } else if(el.querySelector('input').checked && SELECTED_WILD.size >= 2 && !SELECTED_WILD.has(parseInt(el.dataset.idx))){
+        e.target.checked = false;
+        return;
+      }
+      const idx = parseInt(el.dataset.idx);
+      if(el.querySelector('input').checked){ SELECTED_WILD.add(idx); el.classList.add('picked'); }
+      else { SELECTED_WILD.delete(idx); el.classList.remove('picked'); }
+      renderCombos();
+    });
+  });
+}
+
+function renderCombos(){
+  const wrap = document.getElementById('comboResults');
+  const selectedGames = Array.from(SELECTED_WILD).map(i => wildcardGames[i]);
+
+  if(selectedGames.length === 0){
+    wrap.innerHTML = '<div class="empty-state">Select at least one wildcard game above to see combos.</div>';
+    return;
+  }
+
+  const locks = currentLocks();
+
+  // Enumerate every combination of outcomes across the 1-2 selected wildcard games.
+  let branches = [[]];
+  selectedGames.forEach(g => {
+    const next = [];
+    branches.forEach(b => {
+      next.push([...b, { away: g.away, home: g.home, pick: g.away }]);
+      next.push([...b, { away: g.away, home: g.home, pick: g.home }]);
+    });
+    branches = next;
+  });
+
+  wrap.innerHTML = branches.map((wildPicks, i) => `
+    <div class="combo-card">
+      <div class="combo-rank">Combo ${i + 1}</div>
+      <ul class="combo-legs">
+        ${locks.map(g => `<li class="locked"><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
+        ${wildPicks.map(g => `<li class="wildcard"><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+}
+
+async function init(){
+  document.getElementById('standingsStatus').textContent = 'Loading season data from ESPN (30 teams)…';
+  document.getElementById('lockStatus').textContent = 'Loading…';
+
+  const [season, today] = await Promise.all([fetchFullSeason(), fetchTodayGames()]);
+  SEASON_DATA = season;
+  STANDINGS = computeStandings(SEASON_DATA);
+  SPLITS = computeSplits(SEASON_DATA);
+
+  RANKINGS = Object.keys(STANDINGS).map(team => {
+    const rec = STANDINGS[team];
+    return { team, w: rec.w, l: rec.l, pct: pct(rec) };
+  }).sort((a, b) => b.pct - a.pct || b.w - a.w)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+
+  TOP10 = RANKINGS.slice(0, 10).map(r => r.team);
+
+  TODAY_GAMES = today.filter(g => g.status !== 'post');
+
+  document.getElementById('rangeSub').textContent = `Standings from ${SEASON_DATA.length} completed games this season · ${TODAY_GAMES.length} eligible games tonight`;
+  document.getElementById('standingsStatus').textContent = `Ranked by winning percentage across ${SEASON_DATA.length} completed games.`;
+
+  renderStandings();
+  renderTop10Checks();
+  renderLocks();
+  renderWildcards();
+  renderCombos();
+}
+
+init();
+</script>
+</body>
+</html>
