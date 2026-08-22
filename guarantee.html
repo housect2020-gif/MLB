@@ -86,20 +86,35 @@
   .lock-row{
     display:flex; align-items:center; justify-content:space-between; gap:12px;
     padding:9px 12px; border:1px solid var(--grid); border-radius:var(--radius-sm); font-size:13px;
-    background:var(--win-soft);
   }
+  .lock-row.standard{background:var(--win-soft);}
+  .lock-row.standard .lock-pick{color:var(--win);}
+  /* Distinct colors per top-10-vs-top-10 matchup, so when multiple pairs of
+     ranked teams play each other tonight, each pair is visually its own group. */
+  .lock-row.matchup-0{background:#ece4fb; border-color:#c9b3f5;}
+  .lock-row.matchup-0 .lock-pick{color:#6a3fd1;}
+  .lock-row.matchup-1{background:#dff1fb; border-color:#a9d8ec;}
+  .lock-row.matchup-1 .lock-pick{color:#1c6f96;}
+  .lock-row.matchup-2{background:#fbe4ee; border-color:#f0b9d1;}
+  .lock-row.matchup-2 .lock-pick{color:#b23368;}
+  .lock-row.matchup-3{background:#fdf0d5; border-color:#edd28f;}
+  .lock-row.matchup-3 .lock-pick{color:#96650a;}
+  .lock-row.matchup-4{background:#dcf7f0; border-color:#a5e5d3;}
+  .lock-row.matchup-4 .lock-pick{color:#0f7a5e;}
   .lock-teams{font-weight:700;}
   .score-note{font-weight:500; font-size:11px; color:var(--sub); font-family:var(--font-mono); margin-left:6px;}
   .lock-reason{color:var(--sub); font-size:11.5px; flex:1; text-align:right;}
-  .lock-pick{font-weight:800; color:var(--win); margin-left:12px;}
+  .lock-pick{font-weight:800; margin-left:12px;}
 
   /* Wildcard picker */
   .wild-checks{display:flex; flex-direction:column; gap:8px;}
   .wild-check{
-    display:flex; align-items:center; gap:9px; font-size:13px; padding:9px 12px;
+    display:flex; align-items:center; justify-content:space-between; gap:9px; font-size:13px; padding:9px 12px;
     border:1px solid var(--grid); border-radius:var(--radius-sm); cursor:pointer; background:var(--colhead-bg);
   }
   .wild-check input{margin:0;}
+  .wild-check .wild-main{display:flex; align-items:center; gap:9px; flex:1;}
+  .wild-check .wild-h2h{font-weight:700; font-size:12.5px; color:var(--accent); white-space:nowrap; margin-left:12px;}
   .wild-check.picked{border-color:var(--warn); background:var(--warn-soft);}
   .wild-hint{font-size:12px; color:var(--sub); margin-bottom:10px;}
 
@@ -145,7 +160,6 @@
   <div class="disclaimer">
     <strong>What this is:</strong> "locked" picks are today's real top-10-by-record teams winning their games — when two top-10 teams play each other, the pick is decided by their actual head-to-head record this season, and if that's tied, by comparing the home team's home record against the away team's road record. Wildcard games (between two teams outside the top 10) are shown as both possible outcomes so you can choose. Not real odds, not betting advice — entertainment only.
   </div>
-  <div style="font-size:11px; color:#8a93a8; margin:-12px 0 20px;" id="versionTag">version: loading…</div>
 
   <div class="card">
     <h2>Current standings</h2>
@@ -163,6 +177,7 @@
   <div class="card">
     <h2>Wildcard games</h2>
     <div class="wild-hint">Games tonight not involving a top-10 team. Pick 1 to 4 — each shows up as both possible outcomes below (4 picks = 16 combos).</div>
+    <div style="display:flex; justify-content:flex-end; font-size:10.5px; color:var(--sub); text-transform:uppercase; font-weight:700; letter-spacing:.3px; padding:0 12px 6px;">H2H Outcome Winner</div>
     <div class="wild-checks" id="wildChecks"></div>
   </div>
 
@@ -172,6 +187,10 @@
   </div>
 
 </div>
+
+<footer style="padding:12px 18px; font-size:11px; color:#8189a0; background:var(--colhead-bg); border-top:1px solid var(--grid); text-align:center;">
+  <div id="versionTag">version: loading…</div>
+</footer>
 
 <script>
 const TEAM_IDS = {
@@ -289,6 +308,30 @@ function computeH2H(teamA, teamB){
   return { winsA, winsB, total: winsA + winsB };
 }
 
+// Same "H2H Outcome Winner" logic as the schedule sheet's column G: head-to-head
+// record decides it; if tied, the team with the better overall season record
+// breaks the tie (labeled "Tied - TEAM"). This is deliberately separate from
+// pickLockedGame's home/road tiebreak above, which is specific to lock picks.
+function computeH2HOutcome(teamA, teamB){
+  const h2h = computeH2H(teamA, teamB);
+  if(h2h.total === 0) return { text: 'No meetings yet', leader: '—' };
+  if(h2h.winsA === h2h.winsB){
+    const text = `Tied ${h2h.winsA}-${h2h.winsB}`;
+    const recA = STANDINGS[teamA], recB = STANDINGS[teamB];
+    if(recA && recB){
+      const gamesA = recA.w + recA.l, gamesB = recB.w + recB.l;
+      const pctA = gamesA > 0 ? recA.w / gamesA : 0;
+      const pctB = gamesB > 0 ? recB.w / gamesB : 0;
+      if(pctA > pctB) return { text, leader: `Tied - ${teamA}` };
+      if(pctB > pctA) return { text, leader: `Tied - ${teamB}` };
+    }
+    return { text, leader: 'Tied' };
+  }
+  return h2h.winsA > h2h.winsB
+    ? { text: `${teamA} leads ${h2h.winsA}-${h2h.winsB}`, leader: teamA }
+    : { text: `${teamB} leads ${h2h.winsB}-${h2h.winsA}`, leader: teamB };
+}
+
 function pct(rec){ if(!rec) return 0; const g = rec.w + rec.l; return g > 0 ? rec.w / g : 0; }
 
 async function fetchTodayGames(){
@@ -394,7 +437,7 @@ function pickLockedGame(away, home, status, statusText, awayScore, homeScore){
   const homeIn = SELECTED_TOP10.has(home);
   if(!awayIn && !homeIn) return null;
 
-  const meta = { away, home, status, statusText, awayScore, homeScore };
+  const meta = { away, home, status, statusText, awayScore, homeScore, bothTop10: awayIn && homeIn };
 
   if(awayIn && !homeIn){
     const r = RANKINGS.find(x => x.team === away);
@@ -434,15 +477,31 @@ function renderLocks(){
     return;
   }
 
-  document.getElementById('lockStatus').textContent = `${locks.length} locked pick${locks.length === 1 ? '' : 's'} from your selected top-10 teams.`;
+  // Assign each distinct top-10-vs-top-10 matchup its own color class, in the
+  // order those matchups appear, so multiple ranked-vs-ranked games tonight are
+  // each visually distinguishable from one another (not just from regular locks).
+  const matchupColorClass = new Map();
+  locks.forEach(g => {
+    if(!g.bothTop10) return;
+    const key = [g.away, g.home].sort().join('-');
+    if(!matchupColorClass.has(key)){
+      matchupColorClass.set(key, `matchup-${matchupColorClass.size % 5}`);
+    }
+  });
+
+  const matchupCount = matchupColorClass.size;
+  document.getElementById('lockStatus').textContent = `${locks.length} locked pick${locks.length === 1 ? '' : 's'} from your selected top-10 teams`
+    + (matchupCount > 0 ? ` — ${matchupCount} ranked-vs-ranked matchup${matchupCount === 1 ? '' : 's'} color-coded below.` : '.');
+
   wrap.innerHTML = locks.map(g => {
     const badge = g.status === 'in'
       ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
       : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
     const hasScore = (g.status === 'in' || g.status === 'post') && g.awayScore !== null && g.homeScore !== null;
     const scoreText = hasScore ? `<span class="score-note">(${g.away} ${g.awayScore}-${g.homeScore} ${g.home})</span>` : '';
+    const rowClass = g.bothTop10 ? matchupColorClass.get([g.away, g.home].sort().join('-')) : 'standard';
     return `
-      <div class="lock-row">
+      <div class="lock-row ${rowClass}">
         <div class="lock-teams">${g.away} @ ${g.home}${scoreText}${badge}</div>
         <div class="lock-reason">${g.reason}</div>
         <div class="lock-pick">${g.pick}</div>
@@ -476,10 +535,16 @@ function renderWildcards(){
     const badge = g.status === 'in'
       ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
       : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
+    const hasScore = g.status === 'in' && g.awayScore !== null && g.homeScore !== null && g.awayScore !== undefined && g.homeScore !== undefined;
+    const scoreText = hasScore ? `<span class="score-note">(${g.away} ${g.awayScore}-${g.homeScore} ${g.home})</span>` : '';
+    const h2h = computeH2HOutcome(g.away, g.home);
     return `
       <label class="wild-check" data-idx="${i}">
-        <input type="checkbox" value="${i}">
-        <span>${g.away} @ ${g.home}${badge}</span>
+        <span class="wild-main">
+          <input type="checkbox" value="${i}">
+          <span>${g.away} @ ${g.home}${scoreText}${badge}</span>
+        </span>
+        <span class="wild-h2h">${h2h.leader}</span>
       </label>
     `;
   }).join('');
