@@ -98,6 +98,7 @@
     padding:9px 12px; border:1px solid var(--grid); border-radius:var(--radius-sm); font-size:13px;
   }
   .pool-teams{font-weight:700; min-width:130px;}
+  .score-note{font-weight:500; font-size:11px; color:var(--sub); font-family:var(--font-mono); margin-left:4px;}
   .status-badge{
     font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;
     padding:2px 6px; border-radius:99px; margin-left:6px; vertical-align:middle;
@@ -330,10 +331,26 @@ async function fetchTodayGames(){
       if(!homeC || !awayC) return;
       const state = comp.status && comp.status.type ? comp.status.type.state : 'pre';
       const shortDetail = comp.status && comp.status.type ? comp.status.type.shortDetail : '';
+      // Handles both possible API shapes — score as an object ({value, displayValue})
+      // or as a raw string/number — and falls back to 0 for a live/final game
+      // whose score field is temporarily missing (e.g. a fresh 0-0 game), rather
+      // than silently showing nothing.
+      const extractScore = (scoreField) => {
+        if(scoreField === undefined || scoreField === null) return null;
+        if(typeof scoreField === 'object') return scoreField.displayValue ?? scoreField.value ?? null;
+        return scoreField;
+      };
+      let awayScore = extractScore(awayC.score);
+      let homeScore = extractScore(homeC.score);
+      if(state === 'in' || state === 'post'){
+        if(awayScore === null) awayScore = 0;
+        if(homeScore === null) homeScore = 0;
+      }
       games.push({
         away: toDisplay(awayC.team.abbreviation),
         home: toDisplay(homeC.team.abbreviation),
-        status: state, statusText: shortDetail
+        status: state, statusText: shortDetail,
+        awayScore, homeScore
       });
     });
     return games;
@@ -342,7 +359,7 @@ async function fetchTodayGames(){
 
 // Blends season win% (70%) with head-to-head win% (30%, when the teams have met)
 // to produce a pick + confidence for one game.
-function pickForGame(away, home, status, statusText){
+function pickForGame(away, home, status, statusText, awayScore, homeScore){
   const recA = STANDINGS[away] || { w:0, l:0 };
   const recB = STANDINGS[home] || { w:0, l:0 };
   const gamesA = recA.w + recA.l, gamesB = recB.w + recB.l;
@@ -365,7 +382,7 @@ function pickForGame(away, home, status, statusText){
       : (h2h.winsA > h2h.winsB ? `${away} leads ${h2h.winsA}-${h2h.winsB}` : `${home} leads ${h2h.winsB}-${h2h.winsA}`);
   }
 
-  return { away, home, pick, confidence, h2hText, status, statusText, recA: `${recA.w}-${recA.l}`, recB: `${recB.w}-${recB.l}` };
+  return { away, home, pick, confidence, h2hText, status, statusText, awayScore, homeScore, recA: `${recA.w}-${recA.l}`, recB: `${recB.w}-${recB.l}` };
 }
 
 function renderPool(){
@@ -379,9 +396,11 @@ function renderPool(){
     const badge = g.status === 'in'
       ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
       : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
+    const hasScore = g.status === 'in' && g.awayScore !== null && g.homeScore !== null && g.awayScore !== undefined && g.homeScore !== undefined;
+    const scoreText = hasScore ? `<span class="score-note">(${g.away} ${g.awayScore}-${g.homeScore} ${g.home})</span>` : '';
     return `
       <div class="pool-row">
-        <div class="pool-teams">${g.away} @ ${g.home} ${badge}</div>
+        <div class="pool-teams">${g.away} @ ${g.home}${scoreText} ${badge}</div>
         <div class="pool-h2h">${g.h2hText} &middot; ${g.away} (${g.recA}) / ${g.home} (${g.recB})</div>
         <div class="pool-pick">${g.pick}</div>
         <div class="conf-bar"><div class="conf-bar-fill" style="width:${pct}%"></div></div>
@@ -560,7 +579,7 @@ async function init(){
   const eligibleGames = TODAY_GAMES.filter(g => g.status !== 'post');
   const finishedCount = TODAY_GAMES.length - eligibleGames.length;
 
-  POOL = eligibleGames.map(g => pickForGame(g.away, g.home, g.status, g.statusText));
+  POOL = eligibleGames.map(g => pickForGame(g.away, g.home, g.status, g.statusText, g.awayScore, g.homeScore));
 
   document.getElementById('rangeSub').textContent = `${TODAY_GAMES.length} games today (${finishedCount} final, excluded) · picks from ${SEASON_DATA.length} completed games this season`;
   document.getElementById('poolStatus').textContent = `${POOL.length} live or upcoming games available for parlays${finishedCount > 0 ? ` — ${finishedCount} final game${finishedCount === 1 ? '' : 's'} excluded` : ''}. Pick confidence blends season win % with head-to-head record.`;

@@ -65,6 +65,7 @@
   }
   .pool-row.head{color:var(--sub); font-weight:600; text-transform:uppercase; font-size:10.5px; letter-spacing:.3px; border:none; padding:0 12px;}
   .pool-teams{font-weight:700;}
+  .score-note{font-weight:500; font-size:11px; color:var(--sub); font-family:var(--font-mono); margin-left:6px;}
   .pool-source{color:var(--sub); font-size:11.5px;}
   .pool-source.tiebreak{color:var(--warn);}
   .pool-form{font-family:var(--font-mono); font-size:11.5px; color:var(--sub);}
@@ -254,7 +255,7 @@ function pct(rec){
 // The core "Best Bet" model: H2H record decides it whenever there's a clear
 // leader. When tied or the teams haven't met yet, fall back to a blend of season
 // win% and last-10-games form (recent form weighted equally with full season).
-function pickForGame(away, home, status, statusText){
+function pickForGame(away, home, status, statusText, awayScore, homeScore){
   const h2h = computeH2H(away, home);
   const seasonA = STANDINGS[away] || {w:0,l:0}, seasonB = STANDINGS[home] || {w:0,l:0};
   const l10A = LAST10[away] || {w:0,l:0}, l10B = LAST10[home] || {w:0,l:0};
@@ -291,7 +292,7 @@ function pickForGame(away, home, status, statusText){
   }
 
   return {
-    away, home, pick, source, isTiebreak, status, statusText, confidence,
+    away, home, pick, source, isTiebreak, status, statusText, confidence, awayScore, homeScore,
     seasonText: `${away} (${seasonA.w}-${seasonA.l}) / ${home} (${seasonB.w}-${seasonB.l})`,
     l10Text: `${away} (${l10A.w}-${l10A.l}) / ${home} (${l10B.w}-${l10B.l})`
   };
@@ -313,10 +314,26 @@ async function fetchTodayGames(){
       if(!homeC || !awayC) return;
       const state = comp.status && comp.status.type ? comp.status.type.state : 'pre';
       const shortDetail = comp.status && comp.status.type ? comp.status.type.shortDetail : '';
+      // Handles both possible API shapes — score as an object ({value, displayValue})
+      // or as a raw string/number — and falls back to 0 for a live/final game
+      // whose score field is temporarily missing (e.g. a fresh 0-0 game), rather
+      // than silently showing nothing.
+      const extractScore = (scoreField) => {
+        if(scoreField === undefined || scoreField === null) return null;
+        if(typeof scoreField === 'object') return scoreField.displayValue ?? scoreField.value ?? null;
+        return scoreField;
+      };
+      let awayScore = extractScore(awayC.score);
+      let homeScore = extractScore(homeC.score);
+      if(state === 'in' || state === 'post'){
+        if(awayScore === null) awayScore = 0;
+        if(homeScore === null) homeScore = 0;
+      }
       games.push({
         away: toDisplay(awayC.team.abbreviation),
         home: toDisplay(homeC.team.abbreviation),
-        status: state, statusText: shortDetail
+        status: state, statusText: shortDetail,
+        awayScore, homeScore
       });
     });
     return games;
@@ -341,10 +358,12 @@ function renderPool(){
     const badge = g.status === 'in'
       ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
       : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
+    const hasScore = g.status === 'in' && g.awayScore !== null && g.homeScore !== null && g.awayScore !== undefined && g.homeScore !== undefined;
+    const scoreText = hasScore ? `<span class="score-note">(${g.away} ${g.awayScore}-${g.homeScore} ${g.home})</span>` : '';
     const row = document.createElement('div');
     row.className = 'pool-row';
     row.innerHTML = `
-      <div class="pool-teams">${g.away} @ ${g.home}${badge}</div>
+      <div class="pool-teams">${g.away} @ ${g.home}${scoreText}${badge}</div>
       <div class="pool-source ${g.isTiebreak ? 'tiebreak' : ''}">${g.source}</div>
       <div class="pool-form">${g.seasonText}</div>
       <div class="pool-form">${g.l10Text}</div>
@@ -424,7 +443,7 @@ async function init(){
 
   const eligible = today.filter(g => g.status !== 'post');
   const finishedCount = today.length - eligible.length;
-  POOL = eligible.map(g => pickForGame(g.away, g.home, g.status, g.statusText));
+  POOL = eligible.map(g => pickForGame(g.away, g.home, g.status, g.statusText, g.awayScore, g.homeScore));
 
   document.getElementById('rangeSub').textContent = `${today.length} games tonight (${finishedCount} final, excluded) · model built from ${SEASON_DATA.length} completed games this season`;
   document.getElementById('poolStatus').textContent = `${POOL.length} live or upcoming games eligible for picks.`;
