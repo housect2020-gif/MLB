@@ -495,11 +495,13 @@ function pickLockedGame(away, home, status, statusText, awayScore, homeScore){
 
   if(awayIn && !homeIn){
     const r = RANKINGS.find(x => x.team === away);
-    return { ...meta, pick: away, reason: `${away} is #${r ? r.rank : '?'} — ${home} is unranked in the top 10` };
+    const opp = RANKINGS.find(x => x.team === home);
+    return { ...meta, pick: away, reason: `${away} is #${r ? r.rank : '?'} — ${home} is #${opp ? opp.rank : '?'}` };
   }
   if(homeIn && !awayIn){
     const r = RANKINGS.find(x => x.team === home);
-    return { ...meta, pick: home, reason: `${home} is #${r ? r.rank : '?'} — ${away} is unranked in the top 10` };
+    const opp = RANKINGS.find(x => x.team === away);
+    return { ...meta, pick: home, reason: `${home} is #${r ? r.rank : '?'} — ${away} is #${opp ? opp.rank : '?'}` };
   }
 
   // Both are selected top-10 teams playing each other.
