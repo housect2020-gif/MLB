@@ -384,25 +384,27 @@ function renderTop10Checks(){
 // selected top-10 team, that team wins; (2) if both sides are selected top-10
 // teams, use this season's head-to-head record; (3) if H2H is tied, compare the
 // home team's home record against the away team's road record.
-function pickLockedGame(away, home){
+function pickLockedGame(away, home, status, statusText){
   const awayIn = SELECTED_TOP10.has(away);
   const homeIn = SELECTED_TOP10.has(home);
   if(!awayIn && !homeIn) return null;
 
+  const meta = { away, home, status, statusText };
+
   if(awayIn && !homeIn){
     const r = RANKINGS.find(x => x.team === away);
-    return { away, home, pick: away, reason: `${away} is #${r ? r.rank : '?'} — ${home} is unranked in the top 10` };
+    return { ...meta, pick: away, reason: `${away} is #${r ? r.rank : '?'} — ${home} is unranked in the top 10` };
   }
   if(homeIn && !awayIn){
     const r = RANKINGS.find(x => x.team === home);
-    return { away, home, pick: home, reason: `${home} is #${r ? r.rank : '?'} — ${away} is unranked in the top 10` };
+    return { ...meta, pick: home, reason: `${home} is #${r ? r.rank : '?'} — ${away} is unranked in the top 10` };
   }
 
   // Both are selected top-10 teams playing each other.
   const h2h = computeH2H(away, home);
   if(h2h.total > 0 && h2h.winsA !== h2h.winsB){
     const pick = h2h.winsA > h2h.winsB ? away : home;
-    return { away, home, pick, reason: `H2H: ${pick} leads ${Math.max(h2h.winsA,h2h.winsB)}-${Math.min(h2h.winsA,h2h.winsB)}` };
+    return { ...meta, pick, reason: `H2H: ${pick} leads ${Math.max(h2h.winsA,h2h.winsB)}-${Math.min(h2h.winsA,h2h.winsB)}` };
   }
   const homeSplit = (SPLITS[home] && SPLITS[home].home) || { w:0, l:0 };
   const awaySplit = (SPLITS[away] && SPLITS[away].road) || { w:0, l:0 };
@@ -410,7 +412,7 @@ function pickLockedGame(away, home){
   const pick = homePct >= awayPct ? home : away;
   const h2hNote = h2h.total > 0 ? `H2H tied ${h2h.winsA}-${h2h.winsB} — ` : 'No H2H meetings yet — ';
   return {
-    away, home, pick,
+    ...meta, pick,
     reason: `${h2hNote}tiebreak: ${home} home ${homeSplit.w}-${homeSplit.l} vs ${away} road ${awaySplit.w}-${awaySplit.l}`
   };
 }
@@ -418,7 +420,7 @@ function pickLockedGame(away, home){
 function renderLocks(){
   const wrap = document.getElementById('lockList');
   const locks = TODAY_GAMES
-    .map(g => pickLockedGame(g.away, g.home))
+    .map(g => pickLockedGame(g.away, g.home, g.status, g.statusText))
     .filter(Boolean);
 
   if(locks.length === 0){
@@ -428,17 +430,22 @@ function renderLocks(){
   }
 
   document.getElementById('lockStatus').textContent = `${locks.length} locked pick${locks.length === 1 ? '' : 's'} from your selected top-10 teams.`;
-  wrap.innerHTML = locks.map(g => `
-    <div class="lock-row">
-      <div class="lock-teams">${g.away} @ ${g.home}</div>
-      <div class="lock-reason">${g.reason}</div>
-      <div class="lock-pick">${g.pick}</div>
-    </div>
-  `).join('');
+  wrap.innerHTML = locks.map(g => {
+    const badge = g.status === 'in'
+      ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
+      : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
+    return `
+      <div class="lock-row">
+        <div class="lock-teams">${g.away} @ ${g.home}${badge}</div>
+        <div class="lock-reason">${g.reason}</div>
+        <div class="lock-pick">${g.pick}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function currentLocks(){
-  return TODAY_GAMES.map(g => pickLockedGame(g.away, g.home)).filter(Boolean);
+  return TODAY_GAMES.map(g => pickLockedGame(g.away, g.home, g.status, g.statusText)).filter(Boolean);
 }
 
 function renderWildcards(){
