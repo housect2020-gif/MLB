@@ -58,11 +58,11 @@
   .status-line{font-size:13px; color:var(--sub); margin-bottom:14px;}
 
   /* Standings */
-  .standings-grid{display:grid; grid-template-columns:1fr 1fr; gap:24px;}
+  .standings-grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px;}
   .standings-col{display:flex; flex-direction:column; gap:2px;}
   .standings-row{
-    display:grid; grid-template-columns:28px 1fr 70px 60px; align-items:center; gap:8px;
-    padding:6px 8px; border-radius:6px; font-size:13px;
+    display:grid; grid-template-columns:24px 1fr 56px 50px 56px; align-items:center; gap:6px;
+    padding:6px 6px; border-radius:6px; font-size:12.5px;
   }
   .standings-row.head{color:var(--sub); font-size:10.5px; text-transform:uppercase; font-weight:700; letter-spacing:.3px;}
   .standings-row:not(.head):nth-child(odd){background:var(--colhead-bg);}
@@ -121,7 +121,8 @@
   .status-badge.live{background:var(--live-soft); color:var(--live);}
   .status-badge.pre{background:var(--accent-soft); color:var(--accent);}
 
-  @media (max-width:640px){ .standings-grid{grid-template-columns:1fr;} }
+  @media (max-width:900px){ .standings-grid{grid-template-columns:1fr 1fr;} }
+  @media (max-width:600px){ .standings-grid{grid-template-columns:1fr;} }
 </style>
 </head>
 <body>
@@ -160,7 +161,7 @@
 
   <div class="card">
     <h2>Wildcard games</h2>
-    <div class="wild-hint">Games tonight not involving a top-10 team. Pick 1 or 2 — each shows up as both possible outcomes below.</div>
+    <div class="wild-hint">Games tonight not involving a top-10 team. Pick 1 to 4 — each shows up as both possible outcomes below (4 picks = 16 combos).</div>
     <div class="wild-checks" id="wildChecks"></div>
   </div>
 
@@ -183,6 +184,7 @@ function toDisplay(abbr){ return FROM_ESPN[abbr] || abbr; }
 let SEASON_DATA = [];
 let STANDINGS = {};     // team -> {w,l}
 let SPLITS = {};        // team -> {home:{w,l}, road:{w,l}}
+let LAST10 = {};        // team -> {w,l} over their last 10 completed games
 let RANKINGS = [];      // [{team,w,l,pct,rank}], sorted best to worst
 let TOP10 = [];         // top 10 team abbrs, in rank order
 let TODAY_GAMES = [];   // eligible (non-final) games tonight
@@ -256,6 +258,24 @@ function computeSplits(rows){
   return splits;
 }
 
+// Each team's record over their own last 10 completed games (walks each team's
+// own game log, not the last 10 calendar days).
+function computeLast10(rows){
+  const byTeam = {};
+  rows.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    [r.away, r.home].forEach(t => { (byTeam[t] = byTeam[t] || []).push(r); });
+  });
+  const result = {};
+  Object.keys(byTeam).forEach(team => {
+    const games = byTeam[team].slice().sort((a,b) => a.date.localeCompare(b.date)).slice(-10);
+    let w = 0, l = 0;
+    games.forEach(g => { if(g.winner === team) w++; else l++; });
+    result[team] = { w, l };
+  });
+  return result;
+}
+
 function computeH2H(teamA, teamB){
   let winsA = 0, winsB = 0;
   SEASON_DATA.forEach(r => {
@@ -304,19 +324,20 @@ function renderStandings(){
     col.className = 'standings-col';
     const head = document.createElement('div');
     head.className = 'standings-row head';
-    head.innerHTML = '<div>#</div><div>Team</div><div>W-L</div><div>Pct</div>';
+    head.innerHTML = '<div>#</div><div>Team</div><div>W-L</div><div>Pct</div><div>Last 10</div>';
     col.appendChild(head);
     list.forEach(r => {
       const row = document.createElement('div');
       row.className = 'standings-row' + (top10Set.has(r.team) ? ' top10' : '');
-      row.innerHTML = `<div class="rank">${r.rank}</div><div class="team">${r.team}</div><div class="rec">${r.w}-${r.l}</div><div class="pctval">${r.pct.toFixed(3).replace(/^0/,'')}</div>`;
+      row.innerHTML = `<div class="rank">${r.rank}</div><div class="team">${r.team}</div><div class="rec">${r.w}-${r.l}</div><div class="pctval">${r.pct.toFixed(3).replace(/^0/,'')}</div><div class="rec">${r.l10w}-${r.l10l}</div>`;
       col.appendChild(row);
     });
     return col;
   };
   grid.innerHTML = '';
-  grid.appendChild(makeCol(RANKINGS.slice(0, 15)));
-  grid.appendChild(makeCol(RANKINGS.slice(15, 30)));
+  grid.appendChild(makeCol(RANKINGS.slice(0, 10)));
+  grid.appendChild(makeCol(RANKINGS.slice(10, 20)));
+  grid.appendChild(makeCol(RANKINGS.slice(20, 30)));
 }
 
 function renderTop10Checks(){
@@ -450,13 +471,14 @@ function renderWildcards(){
   }).join('');
 
   SELECTED_WILD = new Set();
+  const MAX_WILDCARDS = 4;
   wrap.querySelectorAll('.wild-check').forEach(el => {
     el.addEventListener('click', (e) => {
       if(e.target.tagName !== 'INPUT'){
         const cb = el.querySelector('input');
-        if(!cb.checked && SELECTED_WILD.size >= 2){ return; } // cap at 2
+        if(!cb.checked && SELECTED_WILD.size >= MAX_WILDCARDS){ return; } // cap at MAX_WILDCARDS
         cb.checked = !cb.checked;
-      } else if(el.querySelector('input').checked && SELECTED_WILD.size >= 2 && !SELECTED_WILD.has(parseInt(el.dataset.idx))){
+      } else if(el.querySelector('input').checked && SELECTED_WILD.size >= MAX_WILDCARDS && !SELECTED_WILD.has(parseInt(el.dataset.idx))){
         e.target.checked = false;
         return;
       }
@@ -509,10 +531,12 @@ async function init(){
   SEASON_DATA = season;
   STANDINGS = computeStandings(SEASON_DATA);
   SPLITS = computeSplits(SEASON_DATA);
+  LAST10 = computeLast10(SEASON_DATA);
 
   RANKINGS = Object.keys(STANDINGS).map(team => {
     const rec = STANDINGS[team];
-    return { team, w: rec.w, l: rec.l, pct: pct(rec) };
+    const l10 = LAST10[team] || { w: 0, l: 0 };
+    return { team, w: rec.w, l: rec.l, pct: pct(rec), l10w: l10.w, l10l: l10.l };
   }).sort((a, b) => b.pct - a.pct || b.w - a.w)
     .map((r, i) => ({ ...r, rank: i + 1 }));
 
