@@ -153,6 +153,7 @@
   <div class="disclaimer">
     <strong>What this is:</strong> a confidence-ranked pick generator built from each team's live season win % and current head-to-head record — not real sportsbook odds or payouts, and not betting advice. It's a way to explore the data on the schedule page as parlay-style combinations, for entertainment only.
   </div>
+  <div style="font-size:11px; color:#8a93a8; margin:-12px 0 20px;" id="versionTag">version: loading…</div>
 
   <div class="card">
     <h2>Build parlays</h2>
@@ -572,6 +573,19 @@ async function init(){
   document.getElementById('generateBtn').addEventListener('click', generateParlays);
   document.getElementById('downloadPdfBtn').addEventListener('click', downloadPdf);
 }
+
+// Shows the file's actual last-modified date (as reported by the browser/server)
+// instead of a hand-typed version string, so it updates itself whenever the file
+// changes. Note: this depends on GitHub Pages' CDN correctly reporting a
+// Last-Modified header — usually reliable, but not guaranteed on every host.
+function renderVersionTag(){
+  const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const d = new Date(document.lastModified);
+  const stamp = `${d.getFullYear()}_${months[d.getMonth()]}_${String(d.getDate()).padStart(2,'0')} ${d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+  const el = document.getElementById('versionTag');
+  if(el) el.textContent = `version: ${stamp}`;
+}
+renderVersionTag();
 
 init();
 </script>

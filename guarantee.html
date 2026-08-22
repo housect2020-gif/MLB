@@ -143,6 +143,7 @@
   <div class="disclaimer">
     <strong>What this is:</strong> "locked" picks are today's real top-10-by-record teams winning their games — when two top-10 teams play each other, the pick is decided by their actual head-to-head record this season, and if that's tied, by comparing the home team's home record against the away team's road record. Wildcard games (between two teams outside the top 10) are shown as both possible outcomes so you can choose. Not real odds, not betting advice — entertainment only.
   </div>
+  <div style="font-size:11px; color:#8a93a8; margin:-12px 0 20px;" id="versionTag">version: loading…</div>
 
   <div class="card">
     <h2>Current standings</h2>
@@ -528,6 +529,19 @@ async function init(){
   renderWildcards();
   renderCombos();
 }
+
+// Shows the file's actual last-modified date (as reported by the browser/server)
+// instead of a hand-typed version string, so it updates itself whenever the file
+// changes. Note: this depends on GitHub Pages' CDN correctly reporting a
+// Last-Modified header — usually reliable, but not guaranteed on every host.
+function renderVersionTag(){
+  const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const d = new Date(document.lastModified);
+  const stamp = `${d.getFullYear()}_${months[d.getMonth()]}_${String(d.getDate()).padStart(2,'0')} ${d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+  const el = document.getElementById('versionTag');
+  if(el) el.textContent = `version: ${stamp}`;
+}
+renderVersionTag();
 
 init();
 </script>

@@ -229,7 +229,7 @@
 
 <footer>
   Season history is pulled live from ESPN's public schedule endpoints for all 30 teams (through <span id="histThrough">—</span>) each time this page loads. Today's games refresh automatically every 30 seconds while this page is open. No API key required. If ESPN's data can't be reached, the page falls back to sample data instead of showing nothing.
-  <div style="margin-top:6px; color:#a7b2c2;">version: 2026_august_17o</div>
+  <div style="margin-top:6px; color:#a7b2c2;" id="versionTag">version: loading…</div>
 </footer>
 
 </div>
@@ -700,6 +700,19 @@ async function init(){
     render();
   }, 30000);
 }
+
+// Shows the file's actual last-modified date (as reported by the browser/server)
+// instead of a hand-typed version string, so it updates itself whenever the file
+// changes. Note: this depends on GitHub Pages' CDN correctly reporting a
+// Last-Modified header — usually reliable, but not guaranteed on every host.
+function renderVersionTag(){
+  const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const d = new Date(document.lastModified);
+  const stamp = `${d.getFullYear()}_${months[d.getMonth()]}_${String(d.getDate()).padStart(2,'0')} ${d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+  const el = document.getElementById('versionTag');
+  if(el) el.textContent = `version: ${stamp}`;
+}
+renderVersionTag();
 
 init();
 </script>
