@@ -153,6 +153,16 @@
 const FROM_ESPN = { ARI:'AZ', CHW:'CWS' };
 function toDisplay(abbr){ return FROM_ESPN[abbr] || abbr; }
 
+// The 30 real MLB teams (display abbreviations). Used to filter out non-team
+// entries ESPN's scoreboard sometimes returns as "completed games" — most
+// notably the All-Star Game, whose competitors are "AL" and "NL", not a real
+// team, which otherwise pollutes standings with a fake 1-0/1.000 team.
+const VALID_TEAMS = new Set([
+  'BAL','BOS','LAA','CWS','CLE','DET','KC','MIL','MIN','NYY',
+  'ATH','SEA','TEX','TOR','ATL','CHC','CIN','HOU','LAD','WSH',
+  'NYM','PHI','PIT','STL','SD','SF','COL','MIA','AZ','TB'
+]);
+
 let SEASON_DATA = [];
 let STANDINGS = {};   // team -> {w,l} season-to-date
 let LAST10 = {};      // team -> {w,l} over their last 10 completed games
@@ -203,6 +213,7 @@ async function fetchDaySchedule(dateStr){
       if(!homeC || !awayC) return;
       const homeAbbr = toDisplay(homeC.team.abbreviation);
       const awayAbbr = toDisplay(awayC.team.abbreviation);
+      if(!VALID_TEAMS.has(awayAbbr) || !VALID_TEAMS.has(homeAbbr)) return; // skip non-team events (e.g. All-Star Game: AL vs NL)
       let winner = '—';
       if(homeC.winner) winner = homeAbbr;
       else if(awayC.winner) winner = awayAbbr;
@@ -364,9 +375,12 @@ async function fetchTodayGames(){
         if(awayScore === null) awayScore = 0;
         if(homeScore === null) homeScore = 0;
       }
+      const awayAbbr = toDisplay(awayC.team.abbreviation);
+      const homeAbbr = toDisplay(homeC.team.abbreviation);
+      if(!VALID_TEAMS.has(awayAbbr) || !VALID_TEAMS.has(homeAbbr)) return; // skip non-team events (e.g. All-Star Game: AL vs NL)
       games.push({
-        away: toDisplay(awayC.team.abbreviation),
-        home: toDisplay(homeC.team.abbreviation),
+        away: awayAbbr,
+        home: homeAbbr,
         status: state, statusText: shortDetail,
         awayScore, homeScore
       });
