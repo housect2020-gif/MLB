@@ -206,7 +206,13 @@ async function fetchDaySchedule(dateStr){
       let winner = '—';
       if(homeC.winner) winner = homeAbbr;
       else if(awayC.winner) winner = awayAbbr;
-      games.push({ id: ev.id, date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner });
+      games.push({
+        id: ev.id,
+        eventTime: ev.date || '', // exact start timestamp — used to tell a real
+                                   // doubleheader (two different times) apart from
+                                   // the same game counted twice (identical time)
+        date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner
+      });
     });
     return games;
   } catch(e){ console.error('day schedule fetch failed', dateStr, e); return []; }
@@ -215,9 +221,19 @@ async function fetchDaySchedule(dateStr){
 async function fetchFullSeason(){
   const dates = seasonDateStrings();
   const results = await Promise.all(dates.map(d => fetchDaySchedule(d)));
-  const byId = new Map();
-  results.flat().forEach(g => byId.set(g.id, g));
-  return Array.from(byId.values());
+  // Dedupe by exact start timestamp (not just the calendar date) plus the two
+  // teams. ESPN can return the same physical game under two different event ids
+  // depending on which day's query picked it up — this happens near the
+  // midnight-UTC boundary for late West Coast games. That duplicate has the
+  // IDENTICAL start timestamp both times, so keying on eventTime distinguishes
+  // it from a real doubleheader, where the two games have different start times
+  // even though the date and teams match.
+  const byKey = new Map();
+  results.flat().forEach(g => {
+    const key = `${g.eventTime}|${g.away}|${g.home}`;
+    if(!byKey.has(key)) byKey.set(key, g);
+  });
+  return Array.from(byKey.values()).map(({eventTime, ...rest}) => rest);
 }
 
 

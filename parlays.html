@@ -232,6 +232,7 @@ function toDisplay(abbr){ return FROM_ESPN[abbr] || abbr; }
 
 let SEASON_DATA = [];   // completed games this season, all teams
 let STANDINGS = {};     // team -> {w,l}
+let LAST10 = {};        // team -> {w,l} over their last 10 completed games
 let TODAY_GAMES = [];   // today's matchups: {away, home, status}
 let POOL = [];          // computed pick pool: {away, home, pick, confidence, h2hText, status}
 let LAST_PARLAYS = [];  // most recently generated parlay set, used by the PDF download
@@ -294,7 +295,13 @@ async function fetchDaySchedule(dateStr){
       let winner = '—';
       if(homeC.winner) winner = homeAbbr;
       else if(awayC.winner) winner = awayAbbr;
-      games.push({ id: ev.id, date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner });
+      games.push({
+        id: ev.id,
+        eventTime: ev.date || '', // exact start timestamp — used to tell a real
+                                   // doubleheader (two different times) apart from
+                                   // the same game counted twice (identical time)
+        date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner
+      });
     });
     return games;
   } catch(e){ console.error('day schedule fetch failed', dateStr, e); return []; }
@@ -303,9 +310,19 @@ async function fetchDaySchedule(dateStr){
 async function fetchFullSeason(){
   const dates = seasonDateStrings();
   const results = await Promise.all(dates.map(d => fetchDaySchedule(d)));
-  const byId = new Map();
-  results.flat().forEach(g => byId.set(g.id, g));
-  return Array.from(byId.values());
+  // Dedupe by exact start timestamp (not just the calendar date) plus the two
+  // teams. ESPN can return the same physical game under two different event ids
+  // depending on which day's query picked it up — this happens near the
+  // midnight-UTC boundary for late West Coast games. That duplicate has the
+  // IDENTICAL start timestamp both times, so keying on eventTime distinguishes
+  // it from a real doubleheader, where the two games have different start times
+  // even though the date and teams match.
+  const byKey = new Map();
+  results.flat().forEach(g => {
+    const key = `${g.eventTime}|${g.away}|${g.home}`;
+    if(!byKey.has(key)) byKey.set(key, g);
+  });
+  return Array.from(byKey.values()).map(({eventTime, ...rest}) => rest);
 }
 
 
@@ -320,6 +337,24 @@ function computeStandings(rows){
     record[loser].l++;
   });
   return record;
+}
+
+// Each team's record over their own last 10 completed games (walks each team's
+// own game log, not the last 10 calendar days).
+function computeLast10(rows){
+  const byTeam = {};
+  rows.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    [r.away, r.home].forEach(t => { (byTeam[t] = byTeam[t] || []).push(r); });
+  });
+  const result = {};
+  Object.keys(byTeam).forEach(team => {
+    const games = byTeam[team].slice().sort((a,b) => a.date.localeCompare(b.date)).slice(-10);
+    let w = 0, l = 0;
+    games.forEach(g => { if(g.winner === team) w++; else l++; });
+    result[team] = { w, l };
+  });
+  return result;
 }
 
 function computeH2H(teamA, teamB){
@@ -401,7 +436,14 @@ function pickForGame(away, home, status, statusText, awayScore, homeScore){
       : (h2h.winsA > h2h.winsB ? `${away} leads ${h2h.winsA}-${h2h.winsB}` : `${home} leads ${h2h.winsB}-${h2h.winsA}`);
   }
 
-  return { away, home, pick, confidence, h2hText, status, statusText, awayScore, homeScore, recA: `${recA.w}-${recA.l}`, recB: `${recB.w}-${recB.l}` };
+  const l10A = LAST10[away] || { w:0, l:0 };
+  const l10B = LAST10[home] || { w:0, l:0 };
+
+  return {
+    away, home, pick, confidence, h2hText, status, statusText, awayScore, homeScore,
+    recA: `${recA.w}-${recA.l}`, recB: `${recB.w}-${recB.l}`,
+    l10Text: `${away} (${l10A.w}-${l10A.l}) / ${home} (${l10B.w}-${l10B.l})`
+  };
 }
 
 function renderPool(){
@@ -420,7 +462,7 @@ function renderPool(){
     return `
       <div class="pool-row">
         <div class="pool-teams">${g.away} @ ${g.home}${scoreText} ${badge}</div>
-        <div class="pool-h2h">${g.h2hText} &middot; ${g.away} (${g.recA}) / ${g.home} (${g.recB})</div>
+        <div class="pool-h2h">${g.h2hText} &middot; ${g.away} (${g.recA}) / ${g.home} (${g.recB}) &middot; L10: ${g.l10Text}</div>
         <div class="pool-pick">${g.pick}</div>
         <div class="conf-bar"><div class="conf-bar-fill" style="width:${pct}%"></div></div>
         <div class="pool-conf">${pct}%</div>
@@ -585,6 +627,7 @@ async function init(){
   const [season, today] = await Promise.all([fetchFullSeason(), fetchTodayGames()]);
   SEASON_DATA = season;
   STANDINGS = computeStandings(SEASON_DATA);
+  LAST10 = computeLast10(SEASON_DATA);
   TODAY_GAMES = today;
 
   if(TODAY_GAMES.length === 0){
