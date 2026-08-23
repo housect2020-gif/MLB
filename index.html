@@ -322,6 +322,12 @@ async function fetchDaySchedule(dateStr){
       let winner = '—';
       if(homeC.winner) winner = homeAbbr;
       else if(awayC.winner) winner = awayAbbr;
+      // ESPN occasionally returns a stub/placeholder entry for a game that has
+      // 'post' status but no winner flags set — seen specifically around
+      // rescheduled/makeup games (e.g. a doubleheader nightcap that was
+      // originally postponed). A real completed MLB game always has a
+      // determinate winner, so reject anything that doesn't.
+      if(winner === '—') return;
       const gameDate = (ev.date || '').slice(0, 10);
       games.push({
         id: ev.id,
