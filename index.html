@@ -122,6 +122,7 @@
   tr.date-band:hover{background:#d7dff2 !important;}
   tbody tr:hover{background:var(--row-hover);}
   td.date{font-family:var(--font-mono); color:var(--sub); font-size:12px;}
+  .game-time{color:var(--accent); font-size:10.5px; opacity:.8;}
   td.team{font-weight:700; letter-spacing:.2px;}
   td.winner{font-weight:700;}
   td.winner.dash{color:var(--sub); font-weight:400;}
@@ -365,7 +366,7 @@ async function fetchFullSeason(){
     const key = `${g.eventTime}|${g.away}|${g.home}`;
     if(!byKey.has(key)) byKey.set(key, g);
   });
-  const merged = Array.from(byKey.values()).map(({id, eventTime, ...rest}) => rest);
+  const merged = Array.from(byKey.values()).map(({id, ...rest}) => rest);
   merged.sort((a, b) => a.date.localeCompare(b.date));
   return merged;
 }
@@ -404,6 +405,17 @@ function buildKey(away, home){ return `${away}@${home}`; }
 // final, even though the current series leader is already stated in plain text
 // in the "Head-to-Head Record" column (e.g. "BOS leads 5-2"). Parse that instead
 // of waiting for the game to finish, so the leader shows regardless of live status.
+// Formats a game's exact start timestamp as a readable local time (e.g. "4:35 PM").
+// Shown next to the date so that two rows for the same matchup on the same date
+// are visibly either the same game (identical time — would indicate a real bug)
+// or a genuine doubleheader (different times).
+function formatGameTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
 function deriveH2HLeader(h2hText){
   if(!h2hText) return '—';
   const m = h2hText.match(/^([A-Z]{2,3})\s+leads/);
@@ -623,7 +635,7 @@ function render(){
 
     tr.innerHTML = `
       <th class="rownum">${i+1}</th>
-      <td class="date">${r.date}</td>
+      <td class="date">${r.date}${r.eventTime ? ' <span class="game-time">' + formatGameTime(r.eventTime) + '</span>' : ''}</td>
       <td class="team">${r.away}</td>
       <td class="team">${r.home}</td>
       <td class="winner ${(r.winner==='—'&&!live)?'dash':''}">${winnerHtml}</td>
@@ -686,8 +698,12 @@ function exportCsv(){
     }
     const h2hText = r.h2h || '';
     const h2hWinnerText = (!r.h2h_winner || r.h2h_winner === '—') ? deriveH2HLeader(r.h2h) : r.h2h_winner;
+    // Includes the exact start time (not just the date) so a real doubleheader
+    // (two different times) is visibly distinct from a would-be duplicate bug
+    // (which would show the identical time twice) directly in the export.
+    const dateText = r.eventTime ? `${r.date} ${formatGameTime(r.eventTime)}` : r.date;
 
-    lines.push([r.date, r.away, r.home, winnerText, recordText, h2hText, h2hWinnerText].map(csvField).join(','));
+    lines.push([dateText, r.away, r.home, winnerText, recordText, h2hText, h2hWinnerText].map(csvField).join(','));
   });
 
   const csv = lines.join('\r\n');
