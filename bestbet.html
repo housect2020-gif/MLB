@@ -150,11 +150,6 @@
 </footer>
 
 <script>
-const TEAM_IDS = {
-  BAL:1, BOS:2, LAA:3, CWS:4, CLE:5, DET:6, KC:7, MIL:8, MIN:9, NYY:10,
-  ATH:11, SEA:12, TEX:13, TOR:14, ATL:15, CHC:16, CIN:17, HOU:18, LAD:19, WSH:20,
-  NYM:21, PHI:22, PIT:23, STL:24, SD:25, SF:26, COL:27, MIA:28, AZ:29, TB:30
-};
 const FROM_ESPN = { ARI:'AZ', CHW:'CWS' };
 function toDisplay(abbr){ return FROM_ESPN[abbr] || abbr; }
 
@@ -168,9 +163,32 @@ function todayEspnStr(){
   return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
 }
 
-async function fetchTeamSchedule(id){
+const SEASON_START = '2026-03-26'; // Opening Day 2026
+
+// Builds the list of YYYYMMDD date strings from Opening Day through today.
+function seasonDateStrings(){
+  const dates = [];
+  const cursor = new Date(SEASON_START + 'T12:00:00');
+  const end = new Date();
+  end.setHours(12, 0, 0, 0);
+  while(cursor <= end){
+    const y = cursor.getFullYear();
+    const m = String(cursor.getMonth() + 1).padStart(2, '0');
+    const d = String(cursor.getDate()).padStart(2, '0');
+    dates.push(`${y}${m}${d}`);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+// Pulls one calendar day's full slate from ESPN's scoreboard endpoint — the same
+// endpoint used for "today's" live games, which has clean, unique event IDs per
+// day. This replaced a per-team-schedule approach that occasionally duplicated
+// games because the same game could carry different IDs across two teams'
+// individual schedule feeds.
+async function fetchDaySchedule(dateStr){
   try{
-    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/teams/${id}/schedule?season=2026&seasontype=2`);
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateStr}`);
     if(!res.ok) return [];
     const json = await res.json();
     const games = [];
@@ -191,16 +209,17 @@ async function fetchTeamSchedule(id){
       games.push({ id: ev.id, date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner });
     });
     return games;
-  } catch(e){ console.error('schedule fetch failed', id, e); return []; }
+  } catch(e){ console.error('day schedule fetch failed', dateStr, e); return []; }
 }
 
 async function fetchFullSeason(){
-  const ids = Object.values(TEAM_IDS);
-  const results = await Promise.all(ids.map(id => fetchTeamSchedule(id)));
+  const dates = seasonDateStrings();
+  const results = await Promise.all(dates.map(d => fetchDaySchedule(d)));
   const byId = new Map();
   results.flat().forEach(g => byId.set(g.id, g));
   return Array.from(byId.values());
 }
+
 
 function computeStandings(rows){
   const record = {};
