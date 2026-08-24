@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLB Edge — Strong H2H Picks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page-bg: #eef1f6;
+    --surface: #ffffff;
+    --grid: #e3e7ee;
+    --grid-strong: #ccd3de;
+    --header-bg: linear-gradient(135deg, #002d72 0%, #001a46 100%);
+    --header-fg: #ffffff;
+    --colhead-bg: #f2f4f8;
+    --accent: #002d72;
+    --accent-soft: rgba(0,45,114,.08);
+    --live: #d50032;
+    --live-soft: rgba(213,0,50,.09);
+    --win: #0a7d3f;
+    --win-soft: rgba(10,125,63,.10);
+    --warn: #c2660a;
+    --warn-soft: rgba(194,102,10,.13);
+    --text: #14213b;
+    --sub: #64708a;
+    --radius: 12px;
+    --radius-sm: 7px;
+    --shadow: 0 1px 2px rgba(0,20,60,.05), 0 8px 24px -12px rgba(0,20,60,.22);
+    --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', 'SF Mono', 'Roboto Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--page-bg);font-family:var(--font-ui);color:var(--text);}
+
+  .titlebar{
+    background:var(--header-bg); color:var(--header-fg);
+    padding:16px 22px; display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:10px; box-shadow:0 2px 10px rgba(0,20,60,.3);
+    border-bottom:3px solid var(--live);
+  }
+  .titlebar h1{font-size:16px; margin:0; font-weight:700;}
+  .titlebar .sub{font-size:12px; color:#9fb3d9; margin-top:3px;}
+  .nav-links{display:flex; align-items:center; gap:16px;}
+  .nav-links a{color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;}
+  .nav-links a:hover{color:#fff;}
+
+  .page-wrap{max-width:1200px; margin:22px auto; padding:0 18px 40px;}
+
+  .disclaimer{
+    background:var(--live-soft); border:1px solid rgba(213,0,50,.25); color:var(--live);
+    border-radius:var(--radius-sm); padding:10px 14px; font-size:12.5px; margin-bottom:20px; line-height:1.5;
+  }
+  .disclaimer strong{display:block; margin-bottom:4px;}
+
+  .card{background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow); border:1px solid var(--grid-strong); padding:20px; margin-bottom:20px;}
+  .card h2{font-size:14px; margin:0 0 14px; font-weight:700; color:var(--accent); text-transform:uppercase; letter-spacing:.4px;}
+  .status-line{font-size:13px; color:var(--sub); margin-bottom:14px;}
+
+  /* Backtest summary */
+  .backtest-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(190px,1fr)); gap:12px;}
+  .backtest-tile{border:1px solid var(--grid); border-radius:var(--radius-sm); padding:14px; background:var(--colhead-bg);}
+  .backtest-tile .label{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:var(--sub); margin-bottom:6px;}
+  .backtest-tile .pct{font-family:var(--font-mono); font-weight:800; font-size:24px;}
+  .backtest-tile .n{font-size:11px; color:var(--sub); margin-top:2px;}
+  .tile-strong .pct{color:var(--win);}
+  .tile-moderate .pct{color:var(--warn);}
+  .tile-coinflip .pct{color:var(--live);}
+
+  /* Picks table */
+  .pick-list{display:flex; flex-direction:column; gap:6px;}
+  .pick-row{
+    display:grid; grid-template-columns:150px 1fr 90px 90px 90px; align-items:center; gap:10px;
+    padding:9px 12px; border:1px solid var(--grid); border-radius:var(--radius-sm); font-size:13px;
+  }
+  .pick-row.strong{background:var(--win-soft);}
+  .pick-row.moderate{background:var(--warn-soft);}
+  .pick-row.coinflip{background:var(--live-soft);}
+  .pick-row.nodata{background:var(--colhead-bg); opacity:.7;}
+  .pick-teams{font-weight:700;}
+  .pick-source{color:var(--sub); font-size:11.5px;}
+  .pick-tier{font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.3px; text-align:center; padding:3px 8px; border-radius:99px;}
+  .tier-strong{background:var(--win); color:#fff;}
+  .tier-moderate{background:var(--warn); color:#fff;}
+  .tier-coinflip{background:var(--live); color:#fff;}
+  .tier-nodata{background:var(--grid-strong); color:var(--sub);}
+  .pick-team{font-weight:800; text-align:center;}
+  .pick-hist{font-family:var(--font-mono); font-size:11.5px; color:var(--sub); text-align:right;}
+  .status-badge{
+    font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px;
+    padding:2px 6px; border-radius:99px; margin-left:6px; vertical-align:middle;
+  }
+  .status-badge.live{background:var(--live-soft); color:var(--live);}
+  .status-badge.pre{background:var(--accent-soft); color:var(--accent);}
+  .score-note{font-weight:500; font-size:11px; color:var(--sub); font-family:var(--font-mono); margin-left:4px;}
+
+  /* Controls */
+  .controls{display:flex; flex-wrap:wrap; gap:20px; align-items:flex-end;}
+  .control-group{display:flex; flex-direction:column; gap:6px;}
+  .control-group label{font-size:12px; font-weight:600; color:var(--sub); text-transform:uppercase; letter-spacing:.3px;}
+  select{
+    font-family:var(--font-ui); font-size:13px; padding:8px 12px; border:1px solid var(--grid-strong);
+    border-radius:var(--radius-sm); background:var(--surface); color:var(--text);
+  }
+  .checkbox-line{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text);}
+  .btn-primary{
+    background:var(--live); color:#fff; border:none; font-weight:700; cursor:pointer;
+    padding:10px 20px; letter-spacing:.2px; border-radius:var(--radius-sm); font-size:13px;
+  }
+  .btn-primary:hover{background:#b8002a;}
+  .btn-primary:disabled{background:#c9ccd4; cursor:not-allowed;}
+
+  /* Combos */
+  .combo-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(260px,1fr)); gap:14px;}
+  .combo-card{border:1px solid var(--grid-strong); border-radius:var(--radius); padding:15px; background:var(--colhead-bg);}
+  .combo-card.best{border-color:var(--win); background:var(--win-soft);}
+  .combo-rank{font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:var(--sub); margin-bottom:8px;}
+  .combo-card.best .combo-rank{color:var(--win);}
+  .combo-legs{list-style:none; margin:0 0 12px; padding:0; display:flex; flex-direction:column; gap:6px;}
+  .combo-legs li{font-size:12.5px; display:flex; justify-content:space-between; gap:8px;}
+  .combo-legs .leg-teams{color:var(--sub);}
+  .combo-legs .leg-pick{font-weight:700;}
+  .combo-combined{display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px dashed var(--grid-strong); font-size:12.5px;}
+  .combo-combined .value{font-family:var(--font-mono); font-weight:700; font-size:16px; color:var(--accent);}
+  .combo-card.best .combo-combined .value{color:var(--win);}
+
+  .empty-state{color:var(--sub); font-size:13px; padding:20px; text-align:center;}
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <div>
+    <h1>MLB Edge — Strong H2H Picks</h1>
+    <div class="sub" id="rangeSub">Loading season data and today's slate from ESPN…</div>
+  </div>
+  <div class="nav-links">
+    <a href="index.html">← Schedule sheet</a>
+    <a href="parlays.html">Parlay builder</a>
+    <a href="bestbet.html">Best Bet</a>
+    <a href="guarantee.html">Guarantee</a>
+  </div>
+</div>
+
+<div class="page-wrap">
+
+  <div class="disclaimer">
+    <strong>What this is:</strong> a filter, not a prediction model. Every game this season is classified by how decisive the head-to-head record between the two teams is — a real 3+ game H2H lead ("Strong"), a 1-2 game lead ("Moderate"), or a tied series decided only by season-record tiebreak ("Coinflip"). The backtest numbers below are computed live against every completed game this season, so they update as the season goes. Stacking multiple legs into a parlay multiplies the odds against you even when each individual pick is strong — see the note under "Combos" before reading too much into the combined percentage. Not real sportsbook odds, not betting advice — entertainment only.
+  </div>
+
+  <div class="card">
+    <h2>Backtest — this season so far</h2>
+    <div class="status-line" id="backtestStatus">Loading…</div>
+    <div class="backtest-grid" id="backtestGrid"></div>
+  </div>
+
+  <div class="card">
+    <h2>Today's games, classified</h2>
+    <div class="status-line" id="picksStatus">Loading…</div>
+    <div class="pick-list" id="pickList">
+      <div class="pick-row" style="background:transparent; border:none; font-weight:700; text-transform:uppercase; font-size:10.5px; color:var(--sub);">
+        <div>Matchup</div><div>H2H record</div><div>Tier</div><div>Pick</div><div style="text-align:right;">Tier hit rate</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Build combos from Strong picks</h2>
+    <div class="controls">
+      <div class="control-group">
+        <label>Legs per combo</label>
+        <select id="legCount"></select>
+      </div>
+      <div class="control-group">
+        <label>Number of combos</label>
+        <select id="comboCount">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="8">8</option>
+          <option value="10">10</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>&nbsp;</label>
+        <div class="checkbox-line">
+          <input type="checkbox" id="includeModerate">
+          <label for="includeModerate" style="text-transform:none; font-weight:400; color:var(--text);">Include Moderate picks if Strong pool is too small</label>
+        </div>
+      </div>
+      <div class="control-group">
+        <label>&nbsp;</label>
+        <button class="btn-primary" id="generateBtn" disabled>Generate combos</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Generated combos</h2>
+    <div class="status-line">Combined % is the product of each leg's historical tier hit rate — it estimates how often <em>all</em> legs land together, not how good any single pick is. More legs always makes this number smaller, even when every pick is strong.</div>
+    <div class="combo-grid" id="comboResults"><div class="empty-state">Set your options above and click "Generate combos".</div></div>
+  </div>
+
+</div>
+
+<footer style="padding:12px 18px; font-size:11px; color:#8189a0; background:var(--colhead-bg); border-top:1px solid var(--grid); text-align:center;">
+  <div id="versionTag">version: loading…</div>
+</footer>
+
+<script>
+const FROM_ESPN = { ARI:'AZ', CHW:'CWS' };
+function toDisplay(abbr){ return FROM_ESPN[abbr] || abbr; }
+
+const VALID_TEAMS = new Set([
+  'BAL','BOS','LAA','CWS','CLE','DET','KC','MIL','MIN','NYY',
+  'ATH','SEA','TEX','TOR','ATL','CHC','CIN','HOU','LAD','WSH',
+  'NYM','PHI','PIT','STL','SD','SF','COL','MIA','AZ','TB'
+]);
+
+const SEASON_START = '2026-03-26'; // Opening Day 2026
+
+let SEASON_DATA = [];
+let STANDINGS = {};
+let TODAY_GAMES = [];
+let POOL = [];          // today's classified eligible games
+let BACKTEST = {};       // tier -> {correct, total}
+let LAST_COMBOS = [];
+
+function seasonDateStrings(){
+  const dates = [];
+  const cursor = new Date(SEASON_START + 'T12:00:00');
+  const end = new Date();
+  end.setHours(12, 0, 0, 0);
+  while(cursor <= end){
+    const y = cursor.getFullYear();
+    const m = String(cursor.getMonth() + 1).padStart(2, '0');
+    const d = String(cursor.getDate()).padStart(2, '0');
+    dates.push(`${y}${m}${d}`);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
+async function fetchDaySchedule(dateStr){
+  try{
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateStr}`);
+    if(!res.ok) return [];
+    const json = await res.json();
+    const games = [];
+    (json.events || []).forEach(ev => {
+      const comp = ev.competitions && ev.competitions[0];
+      if(!comp) return;
+      const state = comp.status && comp.status.type ? comp.status.type.state : '';
+      if(state !== 'post') return;
+      const competitors = comp.competitors || [];
+      const homeC = competitors.find(c => c.homeAway === 'home');
+      const awayC = competitors.find(c => c.homeAway === 'away');
+      if(!homeC || !awayC) return;
+      const homeAbbr = toDisplay(homeC.team.abbreviation);
+      const awayAbbr = toDisplay(awayC.team.abbreviation);
+      if(!VALID_TEAMS.has(awayAbbr) || !VALID_TEAMS.has(homeAbbr)) return;
+      let winner = '—';
+      if(homeC.winner) winner = homeAbbr;
+      else if(awayC.winner) winner = awayAbbr;
+      if(winner === '—') return;
+      games.push({
+        id: ev.id,
+        eventTime: ev.date || '',
+        date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner
+      });
+    });
+    return games;
+  } catch(e){ console.error('day schedule fetch failed', dateStr, e); return []; }
+}
+
+async function fetchFullSeason(){
+  const dates = seasonDateStrings();
+  const results = await Promise.all(dates.map(d => fetchDaySchedule(d)));
+  const byKey = new Map();
+  results.flat().forEach(g => {
+    const key = `${g.eventTime}|${g.away}|${g.home}`;
+    if(!byKey.has(key)) byKey.set(key, g);
+  });
+  return Array.from(byKey.values());
+}
+
+function computeStandings(rows){
+  const record = {};
+  rows.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    const loser = r.winner === r.away ? r.home : r.away;
+    record[r.winner] = record[r.winner] || { w:0, l:0 };
+    record[loser] = record[loser] || { w:0, l:0 };
+    record[r.winner].w++;
+    record[loser].l++;
+  });
+  return record;
+}
+
+function pct(rec){ if(!rec) return null; const g = rec.w + rec.l; return g > 0 ? rec.w / g : null; }
+
+// Full-season H2H between two teams (same aggregate approach as the schedule
+// sheet's column G) — returns wins for each side and the margin.
+function computeH2HRaw(teamA, teamB){
+  let winsA = 0, winsB = 0;
+  SEASON_DATA.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    const pair = new Set([r.away, r.home]);
+    if(!pair.has(teamA) || !pair.has(teamB)) return;
+    if(r.winner === teamA) winsA++;
+    else if(r.winner === teamB) winsB++;
+  });
+  return { winsA, winsB, total: winsA + winsB };
+}
+
+// Classifies one matchup into a tier, using the same rule the backtest showed
+// actually correlates with accuracy: a real H2H lead of 3+ games is "strong";
+// 1-2 games is "moderate"; a tied series (decided only by season-record
+// tiebreak) is "coinflip"; no meetings yet is "nodata" (excluded — there's no
+// real signal to grade).
+function classifyMatchup(away, home){
+  const h2h = computeH2HRaw(away, home);
+  if(h2h.total === 0){
+    return { tier: 'nodata', pick: null, source: 'No meetings yet' };
+  }
+  if(h2h.winsA === h2h.winsB){
+    const recA = STANDINGS[away], recB = STANDINGS[home];
+    const pctA = pct(recA), pctB = pct(recB);
+    let pick = null;
+    if(pctA !== null && pctB !== null && pctA !== pctB){
+      pick = pctA > pctB ? away : home;
+    }
+    return {
+      tier: 'coinflip', pick,
+      source: pick ? `Tied ${h2h.winsA}-${h2h.winsB} — season-record tiebreak` : `Tied ${h2h.winsA}-${h2h.winsB} — no tiebreak available`
+    };
+  }
+  const pick = h2h.winsA > h2h.winsB ? away : home;
+  const margin = Math.abs(h2h.winsA - h2h.winsB);
+  const tier = margin >= 3 ? 'strong' : 'moderate';
+  return { tier, pick, source: `${pick} leads ${Math.max(h2h.winsA,h2h.winsB)}-${Math.min(h2h.winsA,h2h.winsB)}` };
+}
+
+// Backtests the classification rule against every completed game this season:
+// for each game, classify it (using the same full-season aggregate H2H the
+// site always shows), then check whether that classification's pick matches
+// what actually happened.
+function runBacktest(){
+  const tally = { strong: {correct:0, total:0}, moderate: {correct:0, total:0}, coinflip: {correct:0, total:0} };
+  SEASON_DATA.forEach(r => {
+    const c = classifyMatchup(r.away, r.home);
+    if(c.tier === 'nodata' || !c.pick) return;
+    tally[c.tier].total++;
+    if(c.pick === r.winner) tally[c.tier].correct++;
+  });
+  return tally;
+}
+
+async function fetchTodayGames(){
+  const d = new Date();
+  const dateParam = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+  try{
+    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateParam}`);
+    if(!res.ok) return [];
+    const json = await res.json();
+    const games = [];
+    (json.events || []).forEach(ev => {
+      const comp = ev.competitions && ev.competitions[0];
+      if(!comp) return;
+      const competitors = comp.competitors || [];
+      const homeC = competitors.find(c => c.homeAway === 'home');
+      const awayC = competitors.find(c => c.homeAway === 'away');
+      if(!homeC || !awayC) return;
+      const state = comp.status && comp.status.type ? comp.status.type.state : 'pre';
+      const shortDetail = comp.status && comp.status.type ? comp.status.type.shortDetail : '';
+      const extractScore = (scoreField) => {
+        if(scoreField === undefined || scoreField === null) return null;
+        if(typeof scoreField === 'object') return scoreField.displayValue ?? scoreField.value ?? null;
+        return scoreField;
+      };
+      let awayScore = extractScore(awayC.score);
+      let homeScore = extractScore(homeC.score);
+      if(state === 'in' || state === 'post'){
+        if(awayScore === null) awayScore = 0;
+        if(homeScore === null) homeScore = 0;
+      }
+      const awayAbbr = toDisplay(awayC.team.abbreviation);
+      const homeAbbr = toDisplay(homeC.team.abbreviation);
+      if(!VALID_TEAMS.has(awayAbbr) || !VALID_TEAMS.has(homeAbbr)) return;
+      games.push({ away: awayAbbr, home: homeAbbr, status: state, statusText: shortDetail, awayScore, homeScore });
+    });
+    return games;
+  } catch(e){ console.error('today fetch failed', e); return []; }
+}
+
+function renderBacktest(){
+  const grid = document.getElementById('backtestGrid');
+  const tierLabel = { strong: 'Strong (3+ game H2H lead)', moderate: 'Moderate (1-2 game lead)', coinflip: 'Coinflip (tied, tiebreak)' };
+  const tierClass = { strong: 'tile-strong', moderate: 'tile-moderate', coinflip: 'tile-coinflip' };
+  grid.innerHTML = ['strong','moderate','coinflip'].map(t => {
+    const b = BACKTEST[t];
+    const rate = b.total > 0 ? (b.correct / b.total * 100) : 0;
+    return `
+      <div class="backtest-tile ${tierClass[t]}">
+        <div class="label">${tierLabel[t]}</div>
+        <div class="pct">${b.total > 0 ? rate.toFixed(1) + '%' : '—'}</div>
+        <div class="n">${b.correct}/${b.total} games this season</div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('backtestStatus').textContent = `Computed live from ${SEASON_DATA.length} completed games this season.`;
+}
+
+function tierHitRate(tier){
+  const b = BACKTEST[tier];
+  if(!b || b.total === 0) return 0.5;
+  return b.correct / b.total;
+}
+
+function renderPicks(){
+  const wrap = document.getElementById('pickList');
+  const header = wrap.querySelector('.pick-row');
+  wrap.innerHTML = '';
+  wrap.appendChild(header);
+
+  if(POOL.length === 0){
+    const empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = 'No live or upcoming games right now.';
+    wrap.appendChild(empty);
+    return;
+  }
+
+  const tierName = { strong: 'Strong', moderate: 'Moderate', coinflip: 'Coinflip', nodata: 'No data' };
+
+  POOL.forEach(g => {
+    const badge = g.status === 'in'
+      ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
+      : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
+    const hasScore = g.status === 'in' && g.awayScore !== null && g.homeScore !== null;
+    const scoreText = hasScore ? `<span class="score-note">(${g.away} ${g.awayScore}-${g.homeScore} ${g.home})</span>` : '';
+    const rate = g.tier !== 'nodata' ? (tierHitRate(g.tier) * 100).toFixed(1) + '%' : '—';
+    const row = document.createElement('div');
+    row.className = `pick-row ${g.tier}`;
+    row.innerHTML = `
+      <div class="pick-teams">${g.away} @ ${g.home}${scoreText}${badge}</div>
+      <div class="pick-source">${g.source}</div>
+      <div class="pick-tier tier-${g.tier}">${tierName[g.tier]}</div>
+      <div class="pick-team">${g.pick || '—'}</div>
+      <div class="pick-hist">${rate}</div>
+    `;
+    wrap.appendChild(row);
+  });
+}
+
+function populateLegOptions(){
+  const sel = document.getElementById('legCount');
+  const strongPool = POOL.filter(g => g.tier === 'strong');
+  const includeModerate = document.getElementById('includeModerate').checked;
+  const pool = includeModerate ? POOL.filter(g => g.tier === 'strong' || g.tier === 'moderate') : strongPool;
+  const maxLegs = Math.min(pool.length, 8);
+  sel.innerHTML = '';
+  for(let i = 2; i <= Math.max(2, maxLegs); i++){
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = i;
+    sel.appendChild(opt);
+  }
+  document.getElementById('generateBtn').disabled = pool.length < 2;
+}
+
+function shuffled(arr){
+  const a = arr.slice();
+  for(let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function generateCombos(){
+  const includeModerate = document.getElementById('includeModerate').checked;
+  const pool = (includeModerate ? POOL.filter(g => g.tier === 'strong' || g.tier === 'moderate') : POOL.filter(g => g.tier === 'strong'))
+    .filter(g => g.pick);
+  const legCount = parseInt(document.getElementById('legCount').value);
+  const comboCount = parseInt(document.getElementById('comboCount').value);
+
+  if(pool.length < legCount){
+    document.getElementById('comboResults').innerHTML = `<div class="empty-state">Not enough qualifying games (${pool.length} available, ${legCount} needed).</div>`;
+    return;
+  }
+
+  const baseIdx = pool.map((_, i) => i);
+  const seen = new Set();
+  const combos = [];
+  let attempts = 0;
+  while(combos.length < comboCount && attempts < comboCount * 40){
+    attempts++;
+    const idx = shuffled(baseIdx).slice(0, legCount).sort((a,b) => a - b);
+    const sig = idx.join(',');
+    if(seen.has(sig)) continue;
+    seen.add(sig);
+    const legs = idx.map(i => pool[i]);
+    const combined = legs.reduce((p, g) => p * tierHitRate(g.tier), 1);
+    combos.push({ legs, combined });
+  }
+  combos.sort((a, b) => b.combined - a.combined);
+  LAST_COMBOS = combos;
+  renderCombos(combos);
+}
+
+function renderCombos(combos){
+  const wrap = document.getElementById('comboResults');
+  if(combos.length === 0){
+    wrap.innerHTML = '<div class="empty-state">Could not build combinations from this pool.</div>';
+    return;
+  }
+  wrap.innerHTML = combos.map((c, i) => `
+    <div class="combo-card ${i === 0 ? 'best' : ''}">
+      <div class="combo-rank">${i === 0 ? 'Best combined odds' : `Combo ${i + 1}`} · ${c.legs.length} legs</div>
+      <ul class="combo-legs">
+        ${c.legs.map(g => `<li><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
+      </ul>
+      <div class="combo-combined">
+        <span>Combined estimate</span>
+        <span class="value">${(c.combined * 100).toFixed(1)}%</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function init(){
+  document.getElementById('rangeSub').textContent = 'Loading season data from ESPN (this takes a bit — pulling the full season day by day)…';
+
+  const [season, today] = await Promise.all([fetchFullSeason(), fetchTodayGames()]);
+  SEASON_DATA = season;
+  STANDINGS = computeStandings(SEASON_DATA);
+  TODAY_GAMES = today.filter(g => g.status !== 'post');
+
+  BACKTEST = runBacktest();
+  renderBacktest();
+
+  POOL = TODAY_GAMES.map(g => {
+    const c = classifyMatchup(g.away, g.home);
+    return { ...g, ...c };
+  });
+
+  const eligible = POOL.filter(g => g.tier !== 'nodata' && g.pick);
+  document.getElementById('rangeSub').textContent = `${SEASON_DATA.length} completed games backtested this season · ${TODAY_GAMES.length} eligible games tonight`;
+  document.getElementById('picksStatus').textContent = `${eligible.length} of ${TODAY_GAMES.length} games tonight have a usable H2H signal.`;
+
+  renderPicks();
+  populateLegOptions();
+
+  document.getElementById('includeModerate').addEventListener('change', populateLegOptions);
+  document.getElementById('generateBtn').addEventListener('click', generateCombos);
+}
+
+function renderVersionTag(){
+  const months = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+  const d = new Date(document.lastModified);
+  const stamp = `${d.getFullYear()}_${months[d.getMonth()]}_${String(d.getDate()).padStart(2,'0')} ${d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+  const el = document.getElementById('versionTag');
+  if(el) el.textContent = `version: ${stamp}`;
+}
+renderVersionTag();
+
+init();
+</script>
+</body>
+</html>
