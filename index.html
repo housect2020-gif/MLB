@@ -168,7 +168,7 @@
     <a href="guarantee.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">Guarantee →</a>
     <a href="edge.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">Edge →</a>
     <span class="refresh-note" id="lastUpdated">—</span>
-    <span class="live-pill"><span class="live-dot"></span>LIVE · auto-refresh 30s</span>
+    <span class="live-pill" id="livePill"><span class="live-dot"></span>LIVE · auto-refresh 30s</span>
   </div>
 </div>
 
@@ -719,6 +719,35 @@ function exportCsv(){
   URL.revokeObjectURL(url);
 }
 
+// Whether any of today's games are currently in progress, per the last fetch.
+function hasLiveGameNow(){
+  return Object.values(LIVE_MAP).some(g => g.state === 'in');
+}
+
+// Refreshes every 30s while a game is actually live, but backs off to once an
+// hour when nothing's in progress — no point hammering ESPN every 30 seconds
+// for a slate that's all "Scheduled" or already "Final". Re-checks after every
+// refresh, so it switches back to 30s automatically the moment a game goes live.
+function updateLivePill(){
+  const pill = document.getElementById('livePill');
+  if(!pill) return;
+  const live = hasLiveGameNow();
+  pill.innerHTML = live
+    ? '<span class="live-dot"></span>LIVE · auto-refresh 30s'
+    : '<span class="live-dot" style="animation:none; opacity:.5;"></span>No live games · refreshing hourly';
+}
+
+function scheduleNextRefresh(){
+  const delay = hasLiveGameNow() ? 30000 : 3600000; // 30s if something's live, 1hr otherwise
+  setTimeout(async () => {
+    await fetchLiveToday();
+    allRows = mergeRows();
+    render();
+    updateLivePill();
+    scheduleNextRefresh();
+  }, delay);
+}
+
 async function init(){
   document.getElementById('rangeSub').textContent = 'Loading real 2026 season from ESPN (30 teams)…';
 
@@ -754,17 +783,14 @@ async function init(){
   populateFilters(allRows);
   render();
   wireCellInspector();
+  updateLivePill();
 
   document.getElementById('teamFilter').addEventListener('change', render);
   document.getElementById('dateFilter').addEventListener('change', render);
   document.getElementById('viewFilter').addEventListener('change', render);
   document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
 
-  setInterval(async () => {
-    await fetchLiveToday();
-    allRows = mergeRows();
-    render();
-  }, 30000);
+  scheduleNextRefresh();
 }
 
 // Shows the file's actual last-modified date (as reported by the browser/server)
