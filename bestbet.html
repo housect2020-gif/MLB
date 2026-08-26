@@ -151,107 +151,67 @@
 </footer>
 
 <script>
-const FROM_ESPN = { ARI:'AZ', CHW:'CWS' };
-function toDisplay(abbr){ return FROM_ESPN[abbr] || abbr; }
-
-// The 30 real MLB teams (display abbreviations). Used to filter out non-team
-// entries ESPN's scoreboard sometimes returns as "completed games" — most
-// notably the All-Star Game, whose competitors are "AL" and "NL", not a real
-// team, which otherwise pollutes standings with a fake 1-0/1.000 team.
-const VALID_TEAMS = new Set([
-  'BAL','BOS','LAA','CWS','CLE','DET','KC','MIL','MIN','NYY',
-  'ATH','SEA','TEX','TOR','ATL','CHC','CIN','HOU','LAD','WSH',
-  'NYM','PHI','PIT','STL','SD','SF','COL','MIA','AZ','TB'
-]);
+// The official MLB Stats API's numeric team IDs, mapped to the same display
+// abbreviations used throughout the site.
+const TEAM_ID_MAP = {
+  108:'LAA', 109:'AZ', 110:'BAL', 111:'BOS', 112:'CHC', 113:'CIN', 114:'CLE', 115:'COL',
+  116:'DET', 117:'HOU', 118:'KC', 119:'LAD', 120:'WSH', 121:'NYM', 133:'ATH', 134:'PIT',
+  135:'SD', 136:'SEA', 137:'SF', 138:'STL', 139:'TB', 140:'TEX', 141:'TOR', 142:'MIN',
+  143:'PHI', 144:'ATL', 145:'CWS', 146:'MIA', 147:'NYY', 158:'MIL'
+};
+function teamAbbr(id){ return TEAM_ID_MAP[id] || null; }
 
 let SEASON_DATA = [];
 let STANDINGS = {};   // team -> {w,l} season-to-date
 let LAST10 = {};      // team -> {w,l} over their last 10 completed games
 let POOL = [];         // tonight's eligible games with computed picks
 
-function todayEspnStr(){
-  const d = new Date();
-  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
-}
-
 const SEASON_START = '2026-03-26'; // Opening Day 2026
 
-// Builds the list of YYYYMMDD date strings from Opening Day through today.
-function seasonDateStrings(){
-  const dates = [];
-  const cursor = new Date(SEASON_START + 'T12:00:00');
-  const end = new Date();
-  end.setHours(12, 0, 0, 0);
-  while(cursor <= end){
-    const y = cursor.getFullYear();
-    const m = String(cursor.getMonth() + 1).padStart(2, '0');
-    const d = String(cursor.getDate()).padStart(2, '0');
-    dates.push(`${y}${m}${d}`);
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return dates;
-}
-
-// Pulls one calendar day's full slate from ESPN's scoreboard endpoint — the same
-// endpoint used for "today's" live games, which has clean, unique event IDs per
-// day. This replaced a per-team-schedule approach that occasionally duplicated
-// games because the same game could carry different IDs across two teams'
-// individual schedule feeds.
-async function fetchDaySchedule(dateStr){
+// Pulls the ENTIRE season's completed games in one request. Switched from
+// ESPN's unofficial scoreboard endpoint (which started hard-blocking browser
+// requests with CORS/403 errors — a server-side block that no client-side
+// retry or throttling can work around) to MLB's own official Stats API, which
+// both supports CORS for browser use and supports a date-range query, so this
+// no longer needs ~150 separate day-by-day requests at all.
+async function fetchFullSeason(){
   try{
-    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateStr}`);
+    const todayD = new Date();
+    const endStr = `${todayD.getFullYear()}-${String(todayD.getMonth()+1).padStart(2,'0')}-${String(todayD.getDate()).padStart(2,'0')}`;
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${SEASON_START}&endDate=${endStr}`);
     if(!res.ok) return [];
     const json = await res.json();
     const games = [];
-    (json.events || []).forEach(ev => {
-      const comp = ev.competitions && ev.competitions[0];
-      if(!comp) return;
-      const state = comp.status && comp.status.type ? comp.status.type.state : '';
-      if(state !== 'post') return;
-      const competitors = comp.competitors || [];
-      const homeC = competitors.find(c => c.homeAway === 'home');
-      const awayC = competitors.find(c => c.homeAway === 'away');
-      if(!homeC || !awayC) return;
-      const homeAbbr = toDisplay(homeC.team.abbreviation);
-      const awayAbbr = toDisplay(awayC.team.abbreviation);
-      if(!VALID_TEAMS.has(awayAbbr) || !VALID_TEAMS.has(homeAbbr)) return; // skip non-team events (e.g. All-Star Game: AL vs NL)
-      let winner = '—';
-      if(homeC.winner) winner = homeAbbr;
-      else if(awayC.winner) winner = awayAbbr;
-      // ESPN occasionally returns a stub/placeholder entry for a game that has
-      // 'post' status but no winner flags set — seen specifically around
-      // rescheduled/makeup games (e.g. a doubleheader nightcap that was
-      // originally postponed). A real completed MLB game always has a
-      // determinate winner, so reject anything that doesn't.
-      if(winner === '—') return;
-      games.push({
-        id: ev.id,
-        eventTime: ev.date || '', // exact start timestamp — used to tell a real
-                                   // doubleheader (two different times) apart from
-                                   // the same game counted twice (identical time)
-        date: (ev.date||'').slice(0,10), away: awayAbbr, home: homeAbbr, winner
+    (json.dates || []).forEach(d => {
+      (d.games || []).forEach(g => {
+        if(g.gameType !== 'R') return; // regular season only — excludes the All-Star Game, spring training, postseason
+        if(!g.status || g.status.detailedState !== 'Final') return; // completed games only
+        const awayAbbr = teamAbbr(g.teams.away.team.id);
+        const homeAbbr = teamAbbr(g.teams.home.team.id);
+        if(!awayAbbr || !homeAbbr) return;
+        const winner = g.teams.away.isWinner ? awayAbbr : (g.teams.home.isWinner ? homeAbbr : null);
+        if(!winner) return; // guards against a suspended/no-decision game with no declared winner
+        games.push({
+          id: g.gamePk,
+          eventTime: g.gameDate, // exact start timestamp — distinguishes a real
+                                  // doubleheader (two different times) from the
+                                  // same game counted twice (identical time)
+          date: g.officialDate, // MLB's own "which calendar day this game belongs
+                                 // to" field — more reliable than slicing a timestamp
+          away: awayAbbr, home: homeAbbr, winner
+        });
       });
     });
-    return games;
-  } catch(e){ console.error('day schedule fetch failed', dateStr, e); return []; }
-}
-
-async function fetchFullSeason(){
-  const dates = seasonDateStrings();
-  const results = await Promise.all(dates.map(d => fetchDaySchedule(d)));
-  // Dedupe by exact start timestamp (not just the calendar date) plus the two
-  // teams. ESPN can return the same physical game under two different event ids
-  // depending on which day's query picked it up — this happens near the
-  // midnight-UTC boundary for late West Coast games. That duplicate has the
-  // IDENTICAL start timestamp both times, so keying on eventTime distinguishes
-  // it from a real doubleheader, where the two games have different start times
-  // even though the date and teams match.
-  const byKey = new Map();
-  results.flat().forEach(g => {
-    const key = `${g.eventTime}|${g.away}|${g.home}`;
-    if(!byKey.has(key)) byKey.set(key, g);
-  });
-  return Array.from(byKey.values()).map(({eventTime, ...rest}) => rest);
+    const byKey = new Map();
+    games.forEach(g => {
+      const key = `${g.eventTime}|${g.away}|${g.home}`;
+      if(!byKey.has(key)) byKey.set(key, g);
+    });
+    return Array.from(byKey.values()).map(({id, eventTime, ...rest}) => rest);
+  } catch(e){
+    console.error('season fetch failed', e);
+    return [];
+  }
 }
 
 
@@ -352,44 +312,37 @@ function pickForGame(away, home, status, statusText, awayScore, homeScore){
 }
 
 async function fetchTodayGames(){
-  const dateParam = todayEspnStr();
+  const d = new Date();
+  const dateParam = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   try{
-    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard?dates=${dateParam}`);
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateParam}`);
     if(!res.ok) return [];
     const json = await res.json();
     const games = [];
-    (json.events || []).forEach(ev => {
-      const comp = ev.competitions && ev.competitions[0];
-      if(!comp) return;
-      const competitors = comp.competitors || [];
-      const homeC = competitors.find(c => c.homeAway === 'home');
-      const awayC = competitors.find(c => c.homeAway === 'away');
-      if(!homeC || !awayC) return;
-      const state = comp.status && comp.status.type ? comp.status.type.state : 'pre';
-      const shortDetail = comp.status && comp.status.type ? comp.status.type.shortDetail : '';
-      // Handles both possible API shapes — score as an object ({value, displayValue})
-      // or as a raw string/number — and falls back to 0 for a live/final game
-      // whose score field is temporarily missing (e.g. a fresh 0-0 game), rather
-      // than silently showing nothing.
-      const extractScore = (scoreField) => {
-        if(scoreField === undefined || scoreField === null) return null;
-        if(typeof scoreField === 'object') return scoreField.displayValue ?? scoreField.value ?? null;
-        return scoreField;
-      };
-      let awayScore = extractScore(awayC.score);
-      let homeScore = extractScore(homeC.score);
-      if(state === 'in' || state === 'post'){
-        if(awayScore === null) awayScore = 0;
-        if(homeScore === null) homeScore = 0;
-      }
-      const awayAbbr = toDisplay(awayC.team.abbreviation);
-      const homeAbbr = toDisplay(homeC.team.abbreviation);
-      if(!VALID_TEAMS.has(awayAbbr) || !VALID_TEAMS.has(homeAbbr)) return; // skip non-team events (e.g. All-Star Game: AL vs NL)
-      games.push({
-        away: awayAbbr,
-        home: homeAbbr,
-        status: state, statusText: shortDetail,
-        awayScore, homeScore
+    (json.dates || []).forEach(dt => {
+      (dt.games || []).forEach(g => {
+        if(g.gameType !== 'R') return; // regular season only — excludes the All-Star Game, spring training, postseason
+        const awayAbbr = teamAbbr(g.teams.away.team.id);
+        const homeAbbr = teamAbbr(g.teams.home.team.id);
+        if(!awayAbbr || !homeAbbr) return;
+        let state = 'pre';
+        if(g.status.abstractGameState === 'Live') state = 'in';
+        else if(g.status.abstractGameState === 'Final') state = 'post';
+        const shortDetail = g.status.detailedState || '';
+        let awayScore = g.teams.away.score;
+        let homeScore = g.teams.home.score;
+        if(state === 'in' || state === 'post'){
+          if(awayScore === undefined || awayScore === null) awayScore = 0;
+          if(homeScore === undefined || homeScore === null) homeScore = 0;
+        } else {
+          awayScore = null; homeScore = null;
+        }
+        games.push({
+          away: awayAbbr,
+          home: homeAbbr,
+          status: state, statusText: shortDetail,
+          awayScore, homeScore
+        });
       });
     });
     return games;
