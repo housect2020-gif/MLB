@@ -204,6 +204,10 @@
           <input type="checkbox" id="includeModerate">
           <label for="includeModerate" style="text-transform:none; font-weight:400; color:var(--text);">Include Moderate H2H and Pitcher edge picks if Strong pool is too small</label>
         </div>
+        <div class="checkbox-line" style="margin-top:6px;">
+          <input type="checkbox" id="excludeLive" checked>
+          <label for="excludeLive" style="text-transform:none; font-weight:400; color:var(--text);">Exclude games already in progress</label>
+        </div>
       </div>
       <div class="control-group">
         <label>&nbsp;</label>
@@ -652,14 +656,18 @@ function renderPicks(){
 // enough in backtested strength (63.8% and ~69.6%) to bucket together as the
 // "secondary tier" toggled in via the checkbox — both clearly beat a coin
 // flip, neither is as strong as Strong H2H on its own.
-function buildPool(includeModerate){
-  return POOL.filter(g => g.tier === 'strong' || (includeModerate && (g.tier === 'moderate' || g.tier === 'pitcher_edge')));
+function buildPool(includeModerate, excludeLive){
+  return POOL.filter(g => {
+    if(excludeLive && g.status === 'in') return false;
+    return g.tier === 'strong' || (includeModerate && (g.tier === 'moderate' || g.tier === 'pitcher_edge'));
+  });
 }
 
 function populateLegOptions(){
   const sel = document.getElementById('legCount');
   const includeModerate = document.getElementById('includeModerate').checked;
-  const pool = buildPool(includeModerate);
+  const excludeLive = document.getElementById('excludeLive').checked;
+  const pool = buildPool(includeModerate, excludeLive);
   const maxLegs = Math.min(pool.length, 8);
   sel.innerHTML = '';
   for(let i = 2; i <= Math.max(2, maxLegs); i++){
@@ -683,7 +691,8 @@ function shuffled(arr){
 
 function generateCombos(){
   const includeModerate = document.getElementById('includeModerate').checked;
-  const pool = buildPool(includeModerate).filter(g => g.pick);
+  const excludeLive = document.getElementById('excludeLive').checked;
+  const pool = buildPool(includeModerate, excludeLive).filter(g => g.pick);
   const legCount = parseInt(document.getElementById('legCount').value);
   const comboCount = parseInt(document.getElementById('comboCount').value);
 
@@ -764,6 +773,7 @@ async function init(){
   updateLegRateLabel();
 
   document.getElementById('includeModerate').addEventListener('change', populateLegOptions);
+  document.getElementById('excludeLive').addEventListener('change', populateLegOptions);
   document.getElementById('legCount').addEventListener('change', updateLegRateLabel);
   document.getElementById('generateBtn').addEventListener('click', generateCombos);
 }
