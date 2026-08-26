@@ -156,6 +156,13 @@
   </div>
 
   <div class="card">
+    <h2>Parlay hit rate by leg count — no cherry-picking</h2>
+    <div class="status-line" id="legRateStatus">Loading…</div>
+    <div class="backtest-grid" id="legRateGrid"></div>
+    <div class="status-line" style="margin-top:12px; margin-bottom:0;">This is the honest number: for every completed day this season, it computes the probability that a <em>randomly</em> chosen N-leg subset of that day's Strong+Moderate pool would have hit every leg, then averages that across the whole season — not just the best days you happen to remember. A "great day" like an 8-in-a-row or 13-in-a-row streak is real when it happens, but it isn't a repeatable signal you can spot in advance; it's ordinary variance around these season-wide averages.</div>
+  </div>
+
+  <div class="card">
     <h2>Today's games, classified</h2>
     <div class="status-line" id="picksStatus">Loading…</div>
     <div class="pick-list" id="pickList">
@@ -171,6 +178,7 @@
       <div class="control-group">
         <label>Legs per combo</label>
         <select id="legCount"></select>
+        <div id="legRateLabel" style="font-size:11px; color:var(--sub); margin-top:2px; max-width:220px;"></div>
       </div>
       <div class="control-group">
         <label>Number of combos</label>
@@ -224,6 +232,7 @@ let STANDINGS = {};
 let TODAY_GAMES = [];
 let POOL = [];          // today's classified eligible games
 let BACKTEST = {};       // tier -> {correct, total}
+let LEG_HIT_RATES = {};  // N -> {avg, days}
 let LAST_COMBOS = [];
 
 function seasonDateStrings(){
@@ -356,6 +365,61 @@ function runBacktest(){
   return tally;
 }
 
+// n-choose-k, used for the hypergeometric leg-count backtest below.
+function nCr(n, k){
+  if(k < 0 || k > n) return 0;
+  k = Math.min(k, n - k);
+  let result = 1;
+  for(let i = 0; i < k; i++){
+    result = result * (n - i) / (i + 1);
+  }
+  return result;
+}
+
+// For every completed day this season, builds that day's qualifying pool
+// (Strong + Moderate picks only — Coinflip and no-data games are excluded, same
+// as the default combo pool). Then, for each leg count, computes the
+// hypergeometric probability that a RANDOMLY chosen N-leg subset of that day's
+// pool would have hit every leg — i.e. "if I built an N-leg parlay from
+// whatever was in the pool that day, what fraction of ways to pick N games
+// would have hit." Averaging that across every day this season gives an
+// honest, no-cherry-picking answer to "how often does an N-leg parlay from
+// this pool actually land," instead of just pointing at the best days after
+// the fact.
+function computeLegHitRates(){
+  const byDate = {};
+  SEASON_DATA.forEach(r => { (byDate[r.date] = byDate[r.date] || []).push(r); });
+
+  const dayStats = [];
+  Object.values(byDate).forEach(games => {
+    let correct = 0, total = 0;
+    games.forEach(r => {
+      const c = classifyMatchup(r.away, r.home);
+      if(c.tier !== 'strong' && c.tier !== 'moderate') return;
+      if(!c.pick) return;
+      total++;
+      if(c.pick === r.winner) correct++;
+    });
+    if(total > 0) dayStats.push({ correct, total });
+  });
+
+  const legSizes = [2,3,4,5,6,7,8];
+  const results = {};
+  legSizes.forEach(N => {
+    const probs = [];
+    dayStats.forEach(({correct, total}) => {
+      if(total < N) return;
+      const p = correct < N ? 0 : nCr(correct, N) / nCr(total, N);
+      probs.push(p);
+    });
+    results[N] = {
+      avg: probs.length ? probs.reduce((a,b) => a+b, 0) / probs.length : null,
+      days: probs.length
+    };
+  });
+  return results;
+}
+
 async function fetchTodayGames(){
   const d = new Date();
   const dateParam = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
@@ -409,6 +473,35 @@ function renderBacktest(){
     `;
   }).join('');
   document.getElementById('backtestStatus').textContent = `Computed live from ${SEASON_DATA.length} completed games this season.`;
+}
+
+function renderLegRates(){
+  const grid = document.getElementById('legRateGrid');
+  const sizes = [2,3,4,5,6,7,8];
+  grid.innerHTML = sizes.map(N => {
+    const r = LEG_HIT_RATES[N];
+    const tierClass = r.avg === null ? '' : (r.avg >= 0.3 ? 'tile-strong' : (r.avg >= 0.12 ? 'tile-moderate' : 'tile-coinflip'));
+    return `
+      <div class="backtest-tile ${tierClass}">
+        <div class="label">${N}-leg parlay</div>
+        <div class="pct">${r.avg === null ? '—' : (r.avg*100).toFixed(1) + '%'}</div>
+        <div class="n">avg across ${r.days} days this season</div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('legRateStatus').textContent = `Computed by averaging every completed day this season — not just the best ones.`;
+}
+
+function updateLegRateLabel(){
+  const legCount = parseInt(document.getElementById('legCount').value);
+  const el = document.getElementById('legRateLabel');
+  if(!el) return;
+  const r = LEG_HIT_RATES[legCount];
+  if(!r || r.avg === null){
+    el.textContent = '';
+    return;
+  }
+  el.textContent = `This season, a ${legCount}-leg parlay from this pool has hit an average of ${(r.avg*100).toFixed(1)}% of days.`;
 }
 
 function tierHitRate(tier){
@@ -467,6 +560,7 @@ function populateLegOptions(){
     sel.appendChild(opt);
   }
   document.getElementById('generateBtn').disabled = pool.length < 2;
+  updateLegRateLabel();
 }
 
 function shuffled(arr){
@@ -540,6 +634,9 @@ async function init(){
   BACKTEST = runBacktest();
   renderBacktest();
 
+  LEG_HIT_RATES = computeLegHitRates();
+  renderLegRates();
+
   POOL = TODAY_GAMES.map(g => {
     const c = classifyMatchup(g.away, g.home);
     return { ...g, ...c };
@@ -551,8 +648,10 @@ async function init(){
 
   renderPicks();
   populateLegOptions();
+  updateLegRateLabel();
 
   document.getElementById('includeModerate').addEventListener('change', populateLegOptions);
+  document.getElementById('legCount').addEventListener('change', updateLegRateLabel);
   document.getElementById('generateBtn').addEventListener('click', generateCombos);
 }
 
