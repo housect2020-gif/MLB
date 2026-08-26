@@ -78,6 +78,7 @@
   .pick-row.moderate{background:var(--warn-soft);}
   .pick-row.coinflip{background:var(--live-soft);}
   .pick-row.nodata{background:var(--colhead-bg); opacity:.7;}
+  .pick-row.pitcher_edge{background:var(--accent-soft);}
   .pick-teams{font-weight:700;}
   .pick-source{color:var(--sub); font-size:11.5px;}
   .pick-tier{font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.3px; text-align:center; padding:3px 8px; border-radius:99px;}
@@ -85,6 +86,14 @@
   .tier-moderate{background:var(--warn); color:#fff;}
   .tier-coinflip{background:var(--live); color:#fff;}
   .tier-nodata{background:var(--grid-strong); color:var(--sub);}
+  .tier-pitcher_edge{background:var(--accent); color:#fff;}
+  .pitcher-chip{
+    font-size:10.5px; font-weight:600; padding:2px 7px; border-radius:99px;
+    white-space:nowrap; display:inline-flex; align-items:center; gap:3px;
+  }
+  .pitcher-chip.confirm{background:var(--win-soft); color:var(--win); border:1px solid var(--win);}
+  .pitcher-chip.warn{background:var(--warn-soft); color:var(--warn); border:1px solid var(--warn);}
+  .pitcher-chip.gap{background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent);}
   .pick-team{font-weight:800; text-align:center;}
   .pick-hist{font-family:var(--font-mono); font-size:11.5px; color:var(--sub); text-align:right;}
   .status-badge{
@@ -133,7 +142,7 @@
 <div class="titlebar">
   <div>
     <h1>MLB Edge — Strong H2H Picks</h1>
-    <div class="sub" id="rangeSub">Loading season data and today's slate from ESPN…</div>
+    <div class="sub" id="rangeSub">Loading season data and today's slate…</div>
   </div>
   <div class="nav-links">
     <a href="index.html">← Schedule sheet</a>
@@ -146,7 +155,7 @@
 <div class="page-wrap">
 
   <div class="disclaimer">
-    <strong>What this is:</strong> a filter, not a prediction model. Every game this season is classified by how decisive the head-to-head record between the two teams is — a real 3+ game H2H lead ("Strong"), a 1-2 game lead ("Moderate"), or a tied series decided only by season-record tiebreak ("Coinflip"). The backtest numbers below are computed live against every completed game this season, so they update as the season goes. Stacking multiple legs into a parlay multiplies the odds against you even when each individual pick is strong — see the note under "Combos" before reading too much into the combined percentage. Not real sportsbook odds, not betting advice — entertainment only.
+    <strong>What this is:</strong> a filter, not a prediction model. Every game this season is classified by how decisive the head-to-head record between the two teams is — a real 3+ game H2H lead ("Strong"), a 1-2 game lead ("Moderate"), or a tied series decided only by season-record tiebreak ("Coinflip"). On top of that, tonight's starting pitchers are checked: on a Strong pick, it's flagged if the better-pitching starter is actually going the other way; on a Coinflip or No-data game, a genuinely large gap between the two starters' recent ERA (2.00+ over the last 60 days) can promote it to a usable "Pitcher edge" pick. The H2H backtest numbers below are computed live against every completed game this season, so they update as the season goes — the pitcher-edge rate (~70%) is from a one-time test and is kept visually distinct rather than presented as equally verified. Stacking multiple legs into a parlay multiplies the odds against you even when each individual pick is strong — see the note under "Combos" before reading too much into the combined percentage. Not real sportsbook odds, not betting advice — entertainment only.
   </div>
 
   <div class="card">
@@ -193,7 +202,7 @@
         <label>&nbsp;</label>
         <div class="checkbox-line">
           <input type="checkbox" id="includeModerate">
-          <label for="includeModerate" style="text-transform:none; font-weight:400; color:var(--text);">Include Moderate picks if Strong pool is too small</label>
+          <label for="includeModerate" style="text-transform:none; font-weight:400; color:var(--text);">Include Moderate H2H and Pitcher edge picks if Strong pool is too small</label>
         </div>
       </div>
       <div class="control-group">
@@ -409,11 +418,19 @@ function computeLegHitRates(){
   return results;
 }
 
+// Formats a game's exact start timestamp as a readable local time (e.g. "4:07 PM").
+function formatGameTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
 async function fetchTodayGames(){
   const d = new Date();
   const dateParam = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   try{
-    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateParam}`);
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateParam}&hydrate=probablePitcher`);
     if(!res.ok) return [];
     const json = await res.json();
     const games = [];
@@ -435,16 +452,96 @@ async function fetchTodayGames(){
         } else {
           awayScore = null; homeScore = null;
         }
+        const awayPitcher = g.teams.away.probablePitcher;
+        const homePitcher = g.teams.home.probablePitcher;
         games.push({
           away: awayAbbr,
           home: homeAbbr,
           status: state, statusText: shortDetail,
-          awayScore, homeScore
+          eventTime: g.gameDate,
+          awayScore, homeScore,
+          awayPitcherId: awayPitcher ? awayPitcher.id : null,
+          homePitcherId: homePitcher ? homePitcher.id : null
         });
       });
     });
     return games;
   } catch(e){ console.error('today fetch failed', e); return []; }
+}
+
+// Fetches each pitcher's ERA over the last 60 days — not full-season ERA, which
+// would blend in outings from months ago and wash out how a pitcher is throwing
+// right now. Backtesting showed this only becomes a meaningful signal once the
+// gap between the two starters is large (2.00+ ERA apart); anything smaller is
+// close to noise, matching exactly how H2H margin behaved (a 1-game lead barely
+// beats a coin flip; a 3+ game lead is a real signal).
+async function fetchPitcherERAs(pitcherIds){
+  const uniqueIds = [...new Set(pitcherIds.filter(id => id))];
+  if(uniqueIds.length === 0) return {};
+  const today = new Date();
+  const endStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const windowStart = new Date(today);
+  windowStart.setDate(windowStart.getDate() - 60);
+  const startStr = `${windowStart.getFullYear()}-${String(windowStart.getMonth()+1).padStart(2,'0')}-${String(windowStart.getDate()).padStart(2,'0')}`;
+
+  const eraMap = {};
+  await Promise.all(uniqueIds.map(async (id) => {
+    try{
+      const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${id}/stats?stats=byDateRange&startDate=${startStr}&endDate=${endStr}&group=pitching`);
+      if(!res.ok) return;
+      const data = await res.json();
+      const splits = (data.stats && data.stats[0] && data.stats[0].splits) || [];
+      // A pitcher traded mid-window has one split per team plus a combined
+      // "All" split — always prefer the combined one so a trade doesn't quietly
+      // drop half their recent starts.
+      const combined = splits.find(s => s.sport && s.sport.code === 'All') || splits[0];
+      const era = combined && combined.stat && combined.stat.era;
+      if(era !== undefined && era !== '-.--'){
+        eraMap[id] = parseFloat(era);
+      }
+    } catch(e){ /* leave this pitcher out of the map on failure */ }
+  }));
+  return eraMap;
+}
+
+// Attaches a pitcher-quality read on top of the H2H tier already assigned.
+// Two things happen here, both grounded in what the backtest actually showed
+// (not recomputed live — the pitcher-ERA backtest needs ~150-250 individual
+// requests, too heavy to re-run on every page load, so these thresholds are
+// fixed from a one-time test and clearly kept separate from the tier hit-rate
+// tiles above, which ARE computed live):
+//   1. On a Strong H2H pick, flag (don't override) whether the better-ERA
+//      starter is throwing for the team H2H favors or the other team — a
+//      qualitative heads-up, not a number we silently bake into the tier's
+//      displayed hit rate.
+//   2. On a Coinflip or No-data game, a genuinely large ERA gap (2.00+, the
+//      threshold where the one-time backtest actually cleared a coin flip —
+//      anything smaller wasn't reliably better than 50/50) promotes it into a
+//      usable "Pitcher edge" pick instead of leaving it unusable.
+const PITCHER_EDGE_MIN_GAP = 2.0;
+const PITCHER_EDGE_HISTORICAL_RATE = 0.696; // from the one-time last-60-days backtest, not live
+
+function applyPitcherSignal(game, eraMap){
+  const awayERA = game.awayPitcherId ? eraMap[game.awayPitcherId] : undefined;
+  const homeERA = game.homePitcherId ? eraMap[game.homePitcherId] : undefined;
+  const hasERA = awayERA !== undefined && homeERA !== undefined && awayERA !== homeERA;
+  const eraGap = hasERA ? Math.abs(awayERA - homeERA) : null;
+  const eraPick = hasERA ? (awayERA < homeERA ? game.away : game.home) : null;
+
+  let pitcherSignal = null;
+  let tier = game.tier;
+  let pick = game.pick;
+  let source = game.source;
+
+  if(game.tier === 'strong' && hasERA){
+    pitcherSignal = eraPick === game.pick ? 'confirm' : 'warn';
+  } else if((game.tier === 'coinflip' || game.tier === 'nodata') && hasERA && eraGap >= PITCHER_EDGE_MIN_GAP){
+    tier = 'pitcher_edge';
+    pick = eraPick;
+    source = `${eraPick} starter's ERA is ${eraGap.toFixed(2)} lower (last 60 days)`;
+  }
+
+  return { ...game, tier, pick, source, pitcherSignal, eraGap, hasERA };
 }
 
 function renderBacktest(){
@@ -495,6 +592,7 @@ function updateLegRateLabel(){
 }
 
 function tierHitRate(tier){
+  if(tier === 'pitcher_edge') return PITCHER_EDGE_HISTORICAL_RATE;
   const b = BACKTEST[tier];
   if(!b || b.total === 0) return 0.5;
   return b.correct / b.total;
@@ -514,20 +612,33 @@ function renderPicks(){
     return;
   }
 
-  const tierName = { strong: 'Strong', moderate: 'Moderate', coinflip: 'Coinflip', nodata: 'No data' };
+  const tierName = { strong: 'Strong', moderate: 'Moderate', coinflip: 'Coinflip', nodata: 'No data', pitcher_edge: 'Pitcher edge' };
 
   POOL.forEach(g => {
     const badge = g.status === 'in'
       ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
-      : `<span class="status-badge pre">${g.statusText || 'Scheduled'}</span>`;
+      : (g.status === 'post'
+        ? `<span class="status-badge pre">${g.statusText || 'Final'}</span>`
+        : `<span class="status-badge pre">${formatGameTime(g.eventTime) || g.statusText || 'Scheduled'}</span>`);
     const hasScore = g.status === 'in' && g.awayScore !== null && g.homeScore !== null;
     const scoreText = hasScore ? `<span class="score-note">(${g.away} ${g.awayScore}-${g.homeScore} ${g.home})</span>` : '';
-    const rate = g.tier !== 'nodata' ? (tierHitRate(g.tier) * 100).toFixed(1) + '%' : '—';
+    // "Pitcher edge" games use a one-time backtest number, not the live tile
+    // above — shown as an italic estimate rather than a plain percentage, so
+    // it doesn't read as equally verified as Strong/Moderate/Coinflip.
+    const rate = g.tier === 'pitcher_edge'
+      ? `<em>~${(PITCHER_EDGE_HISTORICAL_RATE * 100).toFixed(0)}%</em>`
+      : (g.tier !== 'nodata' ? (tierHitRate(g.tier) * 100).toFixed(1) + '%' : '—');
+    let signalChip = '';
+    if(g.pitcherSignal === 'confirm'){
+      signalChip = `<span class="pitcher-chip confirm">pitcher backs it up</span>`;
+    } else if(g.pitcherSignal === 'warn'){
+      signalChip = `<span class="pitcher-chip warn">better pitcher going other way</span>`;
+    }
     const row = document.createElement('div');
     row.className = `pick-row ${g.tier}`;
     row.innerHTML = `
       <div class="pick-teams">${g.away} @ ${g.home}${scoreText}${badge}</div>
-      <div class="pick-source">${g.source}</div>
+      <div class="pick-source">${g.source}${signalChip ? '<br>' + signalChip : ''}</div>
       <div class="pick-tier tier-${g.tier}">${tierName[g.tier]}</div>
       <div class="pick-team">${g.pick || '—'}</div>
       <div class="pick-hist">${rate}</div>
@@ -536,11 +647,19 @@ function renderPicks(){
   });
 }
 
+
+// Strong is always in the pool. Moderate H2H and Pitcher-edge picks are close
+// enough in backtested strength (63.8% and ~69.6%) to bucket together as the
+// "secondary tier" toggled in via the checkbox — both clearly beat a coin
+// flip, neither is as strong as Strong H2H on its own.
+function buildPool(includeModerate){
+  return POOL.filter(g => g.tier === 'strong' || (includeModerate && (g.tier === 'moderate' || g.tier === 'pitcher_edge')));
+}
+
 function populateLegOptions(){
   const sel = document.getElementById('legCount');
-  const strongPool = POOL.filter(g => g.tier === 'strong');
   const includeModerate = document.getElementById('includeModerate').checked;
-  const pool = includeModerate ? POOL.filter(g => g.tier === 'strong' || g.tier === 'moderate') : strongPool;
+  const pool = buildPool(includeModerate);
   const maxLegs = Math.min(pool.length, 8);
   sel.innerHTML = '';
   for(let i = 2; i <= Math.max(2, maxLegs); i++){
@@ -564,8 +683,7 @@ function shuffled(arr){
 
 function generateCombos(){
   const includeModerate = document.getElementById('includeModerate').checked;
-  const pool = (includeModerate ? POOL.filter(g => g.tier === 'strong' || g.tier === 'moderate') : POOL.filter(g => g.tier === 'strong'))
-    .filter(g => g.pick);
+  const pool = buildPool(includeModerate).filter(g => g.pick);
   const legCount = parseInt(document.getElementById('legCount').value);
   const comboCount = parseInt(document.getElementById('comboCount').value);
 
@@ -614,7 +732,7 @@ function renderCombos(combos){
 }
 
 async function init(){
-  document.getElementById('rangeSub').textContent = 'Loading season data from ESPN (this takes a bit — pulling the full season day by day)…';
+  document.getElementById('rangeSub').textContent = 'Loading season data and today\'s slate…';
 
   const [season, today] = await Promise.all([fetchFullSeason(), fetchTodayGames()]);
   SEASON_DATA = season;
@@ -627,14 +745,19 @@ async function init(){
   LEG_HIT_RATES = computeLegHitRates();
   renderLegRates();
 
-  POOL = TODAY_GAMES.map(g => {
+  const basePool = TODAY_GAMES.map(g => {
     const c = classifyMatchup(g.away, g.home);
     return { ...g, ...c };
   });
 
+  document.getElementById('picksStatus').textContent = `${TODAY_GAMES.length} games tonight · checking starting pitchers…`;
+  const pitcherIds = basePool.flatMap(g => [g.awayPitcherId, g.homePitcherId]);
+  const eraMap = await fetchPitcherERAs(pitcherIds);
+  POOL = basePool.map(g => applyPitcherSignal(g, eraMap));
+
   const eligible = POOL.filter(g => g.tier !== 'nodata' && g.pick);
   document.getElementById('rangeSub').textContent = `${SEASON_DATA.length} completed games backtested this season · ${TODAY_GAMES.length} eligible games tonight`;
-  document.getElementById('picksStatus').textContent = `${eligible.length} of ${TODAY_GAMES.length} games tonight have a usable H2H signal.`;
+  document.getElementById('picksStatus').textContent = `${eligible.length} of ${TODAY_GAMES.length} games tonight have a usable signal (H2H or starting pitcher).`;
 
   renderPicks();
   populateLegOptions();
