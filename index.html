@@ -449,7 +449,8 @@ async function fetchLiveToday(){
         const awayRec = g.teams.away.leagueRecord ? `${g.teams.away.leagueRecord.wins}-${g.teams.away.leagueRecord.losses}` : '';
 
         map[buildKey(awayAbbr, homeAbbr)] = {
-          state, shortDetail, homeScore, awayScore, winner, homeAbbr, awayAbbr, homeRec, awayRec
+          state, shortDetail, homeScore, awayScore, winner, homeAbbr, awayAbbr, homeRec, awayRec,
+          eventTime: g.gameDate
         };
       });
     });
@@ -482,6 +483,7 @@ function mergeRows(){
         record: `${live.awayAbbr} (${live.awayRec}) @ ${live.homeAbbr} (${live.homeRec})`,
         h2h: h2h.text,
         h2h_winner: live.state === 'post' ? h2h.leader : '—',
+        eventTime: live.eventTime,
         _live: live
       });
     });
