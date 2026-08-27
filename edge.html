@@ -155,7 +155,7 @@
 <div class="page-wrap">
 
   <div class="disclaimer">
-    <strong>What this is:</strong> a filter, not a prediction model. Every game this season is classified by how decisive the head-to-head record between the two teams is — a real 3+ game H2H lead ("Strong"), a 1-2 game lead ("Moderate"), or a tied series decided only by season-record tiebreak ("Coinflip"). On top of that, tonight's starting pitchers are checked: on a Strong pick, it's flagged if the better-pitching starter is actually going the other way; on a Coinflip or No-data game, a genuinely large gap between the two starters' recent ERA (2.00+ over the last 60 days) can promote it to a usable "Pitcher edge" pick. The H2H backtest numbers below are computed live against every completed game this season, so they update as the season goes — the pitcher-edge rate (~70%) is from a one-time test and is kept visually distinct rather than presented as equally verified. Stacking multiple legs into a parlay multiplies the odds against you even when each individual pick is strong — see the note under "Combos" before reading too much into the combined percentage. Not real sportsbook odds, not betting advice — entertainment only.
+    <strong>What this is:</strong> a filter, not a prediction model. Every game this season is classified by how decisive the head-to-head record between the two teams is — a real 3+ game H2H lead ("Strong"), a 1-2 game lead ("Moderate"), or a tied series decided only by season-record tiebreak ("Coinflip"). On top of that, tonight's starting pitchers are checked: on a Strong pick, it's flagged if the better-pitching starter is actually going the other way; on a Coinflip or No-data game, a genuinely large gap between the two starters' recent ERA (2.00+ over the last 90 days) can promote it to a usable "Pitcher edge" pick. The H2H backtest numbers below are computed live against every completed game this season, so they update as the season goes — the pitcher-edge rate (~72%) is from a one-time test and is kept visually distinct rather than presented as equally verified. Stacking multiple legs into a parlay multiplies the odds against you even when each individual pick is strong — see the note under "Combos" before reading too much into the combined percentage. Not real sportsbook odds, not betting advice — entertainment only.
   </div>
 
   <div class="card">
@@ -473,19 +473,20 @@ async function fetchTodayGames(){
   } catch(e){ console.error('today fetch failed', e); return []; }
 }
 
-// Fetches each pitcher's ERA over the last 60 days — not full-season ERA, which
+// Fetches each pitcher's ERA over the last 90 days — not full-season ERA, which
 // would blend in outings from months ago and wash out how a pitcher is throwing
-// right now. Backtesting showed this only becomes a meaningful signal once the
-// gap between the two starters is large (2.00+ ERA apart); anything smaller is
-// close to noise, matching exactly how H2H margin behaved (a 1-game lead barely
-// beats a coin flip; a 3+ game lead is a real signal).
+// right now. Backtested at both 60 and 90 days: this only becomes a meaningful
+// signal once the gap between the two starters is large (2.00+ ERA apart);
+// anything smaller was close to noise both times, matching exactly how H2H
+// margin behaved (a 1-game lead barely beats a coin flip; a 3+ game lead is a
+// real signal). See PITCHER_EDGE_MIN_GAP and PITCHER_EDGE_HISTORICAL_RATE below.
 async function fetchPitcherERAs(pitcherIds){
   const uniqueIds = [...new Set(pitcherIds.filter(id => id))];
   if(uniqueIds.length === 0) return {};
   const today = new Date();
   const endStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
   const windowStart = new Date(today);
-  windowStart.setDate(windowStart.getDate() - 60);
+  windowStart.setDate(windowStart.getDate() - 90);
   const startStr = `${windowStart.getFullYear()}-${String(windowStart.getMonth()+1).padStart(2,'0')}-${String(windowStart.getDate()).padStart(2,'0')}`;
 
   const eraMap = {};
@@ -522,8 +523,8 @@ async function fetchPitcherERAs(pitcherIds){
 //      threshold where the one-time backtest actually cleared a coin flip —
 //      anything smaller wasn't reliably better than 50/50) promotes it into a
 //      usable "Pitcher edge" pick instead of leaving it unusable.
-const PITCHER_EDGE_MIN_GAP = 2.0;
-const PITCHER_EDGE_HISTORICAL_RATE = 0.696; // from the one-time last-60-days backtest, not live
+const PITCHER_EDGE_MIN_GAP = 2.0; // validated at both 60- and 90-day windows — the jump to a real signal consistently happens right at this cutoff
+const PITCHER_EDGE_HISTORICAL_RATE = 0.715; // from a one-time last-90-days backtest (n=382), not live — re-confirmed the 60-day test's 69.6% almost exactly
 
 function applyPitcherSignal(game, eraMap){
   const awayERA = game.awayPitcherId ? eraMap[game.awayPitcherId] : undefined;
@@ -542,7 +543,7 @@ function applyPitcherSignal(game, eraMap){
   } else if((game.tier === 'coinflip' || game.tier === 'nodata') && hasERA && eraGap >= PITCHER_EDGE_MIN_GAP){
     tier = 'pitcher_edge';
     pick = eraPick;
-    source = `${eraPick} starter's ERA is ${eraGap.toFixed(2)} lower (last 60 days)`;
+    source = `${eraPick} starter's ERA is ${eraGap.toFixed(2)} lower (last 90 days)`;
   }
 
   return { ...game, tier, pick, source, pitcherSignal, eraGap, hasERA };
