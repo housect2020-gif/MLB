@@ -71,7 +71,7 @@
   /* Picks table */
   .pick-list{display:flex; flex-direction:column; gap:6px;}
   .pick-row{
-    display:grid; grid-template-columns:150px 1fr 90px 90px 90px; align-items:center; gap:10px;
+    display:grid; grid-template-columns:150px 1fr 90px 90px 90px 110px; align-items:center; gap:10px;
     padding:9px 12px; border:1px solid var(--grid); border-radius:var(--radius-sm); font-size:13px;
   }
   .pick-row.strong{background:var(--win-soft);}
@@ -176,7 +176,7 @@
     <div class="status-line" id="picksStatus">Loading…</div>
     <div class="pick-list" id="pickList">
       <div class="pick-row" style="background:transparent; border:none; font-weight:700; text-transform:uppercase; font-size:10.5px; color:var(--sub);">
-        <div>Matchup</div><div>H2H record</div><div>Tier</div><div>Pick</div><div style="text-align:right;">Tier hit rate</div>
+        <div>Matchup</div><div>H2H record</div><div>Tier</div><div>Pick</div><div style="text-align:right;">Tier hit rate</div><div style="text-align:right;">Pick's hit rate when picked</div>
       </div>
     </div>
   </div>
@@ -246,6 +246,7 @@ let STANDINGS = {};
 let TODAY_GAMES = [];
 let POOL = [];          // today's classified eligible games
 let BACKTEST = {};       // tier -> {correct, total}
+let TEAM_PICK_RATES = {}; // team -> {correct, total} — this specific team's hit rate whenever it was the H2H pick
 let LEG_HIT_RATES = {};  // N -> {avg, days}
 let LAST_COMBOS = [];
 
@@ -363,6 +364,24 @@ function runBacktest(){
     if(c.tier === 'nodata' || !c.pick) return;
     tally[c.tier].total++;
     if(c.pick === r.winner) tally[c.tier].correct++;
+  });
+  return tally;
+}
+
+// For every team, tallies how often that team specifically was the H2H pick
+// (any tier) and how often that pick actually won. A team's overall record
+// tells you how good they are; this tells you something different — how
+// reliable it's actually been to bet ON them specifically whenever the H2H
+// signal favored them. A team can have a mediocre record but still cover
+// strongly whenever they were the pick (or vice versa).
+function computeTeamPickRates(){
+  const tally = {}; // team -> {correct, total}
+  SEASON_DATA.forEach(r => {
+    const c = classifyMatchup(r.away, r.home);
+    if(c.tier === 'nodata' || !c.pick) return;
+    tally[c.pick] = tally[c.pick] || { correct: 0, total: 0 };
+    tally[c.pick].total++;
+    if(c.pick === r.winner) tally[c.pick].correct++;
   });
   return tally;
 }
@@ -639,6 +658,18 @@ function renderPicks(){
     } else if(g.pitcherSignal === 'warn'){
       signalChip = `<span class="pitcher-chip warn">better pitcher going other way</span>`;
     }
+    // How reliably THIS specific team has covered, historically, whenever it
+    // was the H2H pick — separate from the tier's general hit rate. A small
+    // sample (under 5 picks this season) is shown but flagged, since a couple
+    // of games either way can swing the percentage a lot at that size.
+    let pickTeamRate = '—';
+    if(g.pick && TEAM_PICK_RATES[g.pick]){
+      const tp = TEAM_PICK_RATES[g.pick];
+      const pct = tp.correct / tp.total * 100;
+      const lowSample = tp.total < 5;
+      const highlight = !lowSample && pct >= 70 ? 'color:var(--win); font-weight:700;' : '';
+      pickTeamRate = `<span style="${highlight}">${pct.toFixed(1)}%</span><span style="display:block; font-size:9.5px; color:var(--sub);">${tp.correct}/${tp.total}${lowSample ? ' · small sample' : ''}</span>`;
+    }
     const row = document.createElement('div');
     row.className = `pick-row ${g.tier}`;
     row.innerHTML = `
@@ -647,6 +678,7 @@ function renderPicks(){
       <div class="pick-tier tier-${g.tier}">${tierName[g.tier]}</div>
       <div class="pick-team">${g.pick || '—'}</div>
       <div class="pick-hist">${rate}</div>
+      <div class="pick-hist" style="line-height:1.3;">${pickTeamRate}</div>
     `;
     wrap.appendChild(row);
   });
@@ -750,6 +782,7 @@ async function init(){
   TODAY_GAMES = today.filter(g => g.status !== 'post');
 
   BACKTEST = runBacktest();
+  TEAM_PICK_RATES = computeTeamPickRates();
   renderBacktest();
 
   LEG_HIT_RATES = computeLegHitRates();
