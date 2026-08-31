@@ -114,6 +114,12 @@
   .lock-reason{color:var(--sub); font-size:11.5px; flex:1; text-align:right;}
   .lock-l10{color:var(--sub); font-size:11px; font-family:var(--font-mono); white-space:nowrap;}
   .lock-pick{font-weight:800; margin-left:12px;}
+  .pick-rate-chip{
+    font-family:var(--font-mono); font-size:11.5px; font-weight:600; color:var(--sub);
+    margin-left:12px; white-space:nowrap;
+  }
+  .pick-rate-chip.good{color:var(--win); font-weight:800;}
+  .pick-rate-n{font-weight:400; opacity:.8;}
 
   /* Wildcard picker */
   .wild-checks{display:flex; flex-direction:column; gap:8px;}
@@ -537,6 +543,75 @@ function pickLockedGame(away, home, status, statusText, awayScore, homeScore){
   };
 }
 
+let LOCK_TEAM_PICK_RATES = {}; // team -> {correct, total} — this team's hit rate historically, whenever the same lock-pick rule favored it
+let WILD_TEAM_PICK_RATES = {}; // team -> {correct, total} — same idea, for the wildcard section's H2H-leader rule
+
+// Backtests the SAME lock-pick rule used in pickLockedGame() (rank mismatch,
+// or an H2H-then-home/road-split tiebreak when both are top-10) against every
+// completed game this season. Uses the CURRENT final top-10 as a stand-in for
+// whatever top-10 the user would have had selected on any given past day —
+// there's no way to know past days' actual checkbox choices, so this is a
+// consistent proxy, not a literal replay of what was on screen that day.
+function computeLockTeamPickRates(){
+  const tally = {};
+  const top10Set = new Set(TOP10);
+  SEASON_DATA.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    const awayIn = top10Set.has(r.away);
+    const homeIn = top10Set.has(r.home);
+    if(!awayIn && !homeIn) return;
+    let pick;
+    if(awayIn && !homeIn) pick = r.away;
+    else if(homeIn && !awayIn) pick = r.home;
+    else {
+      const h2h = computeH2H(r.away, r.home);
+      if(h2h.total > 0 && h2h.winsA !== h2h.winsB){
+        pick = h2h.winsA > h2h.winsB ? r.away : r.home;
+      } else {
+        const homeSplit = (SPLITS[r.home] && SPLITS[r.home].home) || { w:0, l:0 };
+        const awaySplit = (SPLITS[r.away] && SPLITS[r.away].road) || { w:0, l:0 };
+        pick = pct(homeSplit) >= pct(awaySplit) ? r.home : r.away;
+      }
+    }
+    tally[pick] = tally[pick] || { correct: 0, total: 0 };
+    tally[pick].total++;
+    if(pick === r.winner) tally[pick].correct++;
+  });
+  return tally;
+}
+
+// Backtests the wildcard section's H2H-leader rule (computeH2HOutcome) against
+// every completed game this season where NEITHER team was in the current
+// top-10 — matching what actually qualifies as a "wildcard" game today.
+function computeWildTeamPickRates(){
+  const tally = {};
+  const top10Set = new Set(TOP10);
+  SEASON_DATA.forEach(r => {
+    if(!r.winner || r.winner === '—') return;
+    if(top10Set.has(r.away) || top10Set.has(r.home)) return;
+    const h2h = computeH2HOutcome(r.away, r.home);
+    let pick = h2h.leader;
+    if(!pick || pick === '—' || pick === 'Tied') return;
+    if(pick.startsWith('Tied - ')) pick = pick.slice(7);
+    tally[pick] = tally[pick] || { correct: 0, total: 0 };
+    tally[pick].total++;
+    if(pick === r.winner) tally[pick].correct++;
+  });
+  return tally;
+}
+
+// Renders the small "hit rate when picked" chip shared by both the lock and
+// wildcard rows. Flags a small sample (under 5 historical picks) rather than
+// showing a raw percentage that a game or two could swing wildly.
+function pickRateChip(team, tallyMap){
+  const t = tallyMap[team];
+  if(!t) return '<span class="pick-rate-chip">—</span>';
+  const p = t.correct / t.total * 100;
+  const lowSample = t.total < 5;
+  const cls = !lowSample && p >= 70 ? 'pick-rate-chip good' : 'pick-rate-chip';
+  return `<span class="${cls}">${p.toFixed(1)}% <span class="pick-rate-n">(${t.correct}/${t.total}${lowSample ? ', small sample' : ''})</span></span>`;
+}
+
 function renderLocks(){
   const wrap = document.getElementById('lockList');
   const locks = TODAY_GAMES
@@ -569,6 +644,7 @@ function renderLocks(){
         <div class="lock-l10">L10: ${g.l10Text}</div>
         <div class="lock-reason">${g.reason}</div>
         <div class="lock-pick">${g.pick}</div>
+        ${pickRateChip(g.pick, LOCK_TEAM_PICK_RATES)}
       </div>
     `;
   }).join('');
@@ -604,6 +680,7 @@ function renderWildcards(){
     const h2h = computeH2HOutcome(g.away, g.home);
     const l10Away = LAST10[g.away] || { w:0, l:0 };
     const l10Home = LAST10[g.home] || { w:0, l:0 };
+    const wildPickTeam = h2h.leader && h2h.leader.startsWith('Tied - ') ? h2h.leader.slice(7) : h2h.leader;
     return `
       <label class="wild-check" data-idx="${i}">
         <span class="wild-main">
@@ -612,6 +689,7 @@ function renderWildcards(){
           <span class="wild-l10">L10: ${g.away} (${l10Away.w}-${l10Away.l}) / ${g.home} (${l10Home.w}-${l10Home.l})</span>
         </span>
         <span class="wild-h2h">${h2h.leader}</span>
+        ${pickRateChip(wildPickTeam, WILD_TEAM_PICK_RATES)}
       </label>
     `;
   }).join('');
@@ -687,6 +765,9 @@ async function init(){
     .map((r, i) => ({ ...r, rank: i + 1 }));
 
   TOP10 = RANKINGS.slice(0, 10).map(r => r.team);
+
+  LOCK_TEAM_PICK_RATES = computeLockTeamPickRates();
+  WILD_TEAM_PICK_RATES = computeWildTeamPickRates();
 
   TODAY_GAMES = today.filter(g => g.status !== 'post');
 
