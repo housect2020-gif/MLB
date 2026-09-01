@@ -148,6 +148,7 @@
   .h2h-match{background:var(--win-soft) !important; color:var(--win) !important; font-weight:700;}
   .h2h-mismatch{background:var(--warn-soft) !important; color:var(--warn) !important; font-weight:700;}
   .h2h-loc{font-weight:400; font-size:11px; color:var(--sub); opacity:.85;}
+  .h2h-actual-loser{font-weight:400; font-size:10.5px; color:var(--sub); opacity:.7;}
 
   footer{padding:12px 18px; font-size:11px; color:#8189a0; background:var(--colhead-bg); border-top:1px solid var(--grid);}
   footer a{color:var(--accent);}
@@ -596,6 +597,12 @@ function render(){
     if(h2hTeam === r.home) h2hTag = ' <span class="h2h-loc">(H)</span>';
     else if(h2hTeam === r.away) h2hTag = ' <span class="h2h-loc">(A)</span>';
 
+    // The actual loser of THIS game — the complement of actualWinner — shown
+    // right after the (H)/(A) location tag, same idea as showing the winner in
+    // column F: lets you see the full result at a glance without cross-checking
+    // column D.
+    const actualLoser = actualWinner ? (actualWinner === r.away ? r.home : r.away) : null;
+
     tr.innerHTML = `
       <th class="rownum">${i+1}</th>
       <td class="date">${r.date}${r.eventTime ? ' <span class="game-time">' + formatGameTime(r.eventTime) + '</span>' : ''}</td>
@@ -604,7 +611,7 @@ function render(){
       <td class="winner ${(r.winner==='—'&&!live)?'dash':''}">${winnerHtml}</td>
       <td class="record">${recordHtml}</td>
       <td class="h2h">${r.h2h || ''}${actualWinner ? ' <span class="h2h-actual-winner">(' + actualWinner + ')</span>' : ''}</td>
-      <td class="team ${h2hCellClass}">${h2hDisplay}${h2hTag}</td>
+      <td class="team ${h2hCellClass}">${h2hDisplay}${h2hTag}${actualLoser ? ' <span class="h2h-actual-loser">(' + actualLoser + ')</span>' : ''}</td>
     `;
     tbody.appendChild(tr);
   });
