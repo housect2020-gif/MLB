@@ -123,6 +123,8 @@
   tbody tr:hover{background:var(--row-hover);}
   td.date{font-family:var(--font-mono); color:var(--sub); font-size:12px;}
   .game-time{color:var(--accent); font-size:10.5px; opacity:.8;}
+  .hist-score{font-size:10.5px; color:var(--sub); font-family:var(--font-mono); font-weight:400;}
+  .h2h-actual-winner{font-size:10.5px; color:var(--sub); opacity:.85;}
   td.team{font-weight:700; letter-spacing:.2px;}
   td.winner{font-weight:700;}
   td.winner.dash{color:var(--sub); font-weight:400;}
@@ -300,6 +302,8 @@ async function fetchFullSeason(){
           away: awayAbbr,
           home: homeAbbr,
           winner,
+          awayScore: g.teams.away.score,
+          homeScore: g.teams.home.score,
           record: '', // filled in by backfillSeasonRecords() once the full season is loaded
           h2h: '',
           h2h_winner: '—'
@@ -565,7 +569,12 @@ function render(){
       }
     } else {
       const isDash = (r.winner === '—' || !r.winner);
-      winnerHtml = isDash ? '—' : r.winner;
+      if(isDash){
+        winnerHtml = '—';
+      } else {
+        const hasScore = r.awayScore !== undefined && r.awayScore !== null && r.homeScore !== undefined && r.homeScore !== null;
+        winnerHtml = r.winner + (hasScore ? ` <span class="hist-score">(${r.awayScore}-${r.homeScore})</span>` : '');
+      }
       recordHtml = r.record || '';
     }
 
@@ -594,7 +603,7 @@ function render(){
       <td class="team">${r.home}</td>
       <td class="winner ${(r.winner==='—'&&!live)?'dash':''}">${winnerHtml}</td>
       <td class="record">${recordHtml}</td>
-      <td class="h2h">${r.h2h || ''}</td>
+      <td class="h2h">${r.h2h || ''}${actualWinner ? ' <span class="h2h-actual-winner">(' + actualWinner + ')</span>' : ''}</td>
       <td class="team ${h2hCellClass}">${h2hDisplay}${h2hTag}</td>
     `;
     tbody.appendChild(tr);
@@ -647,10 +656,14 @@ function exportCsv(){
         recordText = `${live.awayAbbr} (${live.awayRec}) @ ${live.homeAbbr} (${live.homeRec})`;
       }
     } else {
-      winnerText = (r.winner === '—' || !r.winner) ? '—' : r.winner;
+      const isDash = (r.winner === '—' || !r.winner);
+      const hasScore = r.awayScore !== undefined && r.awayScore !== null && r.homeScore !== undefined && r.homeScore !== null;
+      winnerText = isDash ? '—' : (r.winner + (hasScore ? ` (${r.awayScore}-${r.homeScore})` : ''));
       recordText = r.record || '';
     }
-    const h2hText = r.h2h || '';
+    const actualWinnerText = (live && live.state === 'post') ? live.winner
+      : (r.winner && r.winner !== '—' ? r.winner : null);
+    const h2hText = (r.h2h || '') + (actualWinnerText ? ` (${actualWinnerText})` : '');
     const h2hWinnerText = (!r.h2h_winner || r.h2h_winner === '—') ? deriveH2HLeader(r.h2h) : r.h2h_winner;
     // Includes the exact start time (not just the date) so a real doubleheader
     // (two different times) is visibly distinct from a would-be duplicate bug
