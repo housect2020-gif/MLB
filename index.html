@@ -221,7 +221,7 @@
     </tr>
     <tr class="headers">
       <th></th>
-      <th>Date</th>
+      <th id="dateHeader" style="cursor:pointer; user-select:none;" title="Click to sort by game time (only active in Today &amp; Live view)">Date <span id="dateSortArrow"></span></th>
       <th>Away</th>
       <th>Home</th>
       <th>Winner</th>
@@ -266,6 +266,7 @@ function todayStr(){
 let LIVE_MAP = {}; // key: "AWAY@HOME" (display abbrs) for today -> {awayScore, homeScore, status, winner}
 let allRows = []; // combined rows to render
 let CURRENT_FILTERED = []; // the rows currently shown in the table, after filters — used by CSV export
+let TODAY_SORT_DIR = 'asc'; // 'asc' (earliest game first) or 'desc' — only applies in the "Today & live" view, since every row there shares the same date and sorting by date alone doesn't distinguish anything; sorts by actual game start time instead
 let SEASON_DATA = []; // populated at init() from the MLB Stats API, falls back to FALLBACK_DATA if that fails
 let STANDINGS = {}; // team -> {w, l} current overall season record, set by backfillSeasonRecords()
 let STANDINGS_BY_DATE = {}; // date -> {team -> {w, l}} — each team's record as of that specific date, for the H2H tiebreak
@@ -553,9 +554,32 @@ function render(){
     return true;
   });
 
-  // newest first for readability
-  filtered = filtered.slice().reverse();
+  // newest first for readability — except in the "Today & live" view, where
+  // every row shares the same date, so a plain reverse doesn't mean anything;
+  // that view sorts by actual game start time instead, direction controlled
+  // by clicking the Date column header.
+  if(viewFilter === 'today'){
+    filtered = filtered.slice().sort((a, b) => {
+      const ta = a.eventTime || '';
+      const tb = b.eventTime || '';
+      return TODAY_SORT_DIR === 'asc' ? ta.localeCompare(tb) : tb.localeCompare(ta);
+    });
+  } else {
+    filtered = filtered.slice().reverse();
+  }
   CURRENT_FILTERED = filtered;
+
+  const dateHeader = document.getElementById('dateHeader');
+  const dateSortArrow = document.getElementById('dateSortArrow');
+  if(dateHeader && dateSortArrow){
+    if(viewFilter === 'today'){
+      dateHeader.style.opacity = '1';
+      dateSortArrow.textContent = TODAY_SORT_DIR === 'asc' ? '▲' : '▼';
+    } else {
+      dateHeader.style.opacity = '.55';
+      dateSortArrow.textContent = '';
+    }
+  }
 
   const tbody = document.getElementById('sheetBody');
   tbody.innerHTML = '';
@@ -814,6 +838,11 @@ async function init(){
   document.getElementById('dateFilter').addEventListener('change', render);
   document.getElementById('viewFilter').addEventListener('change', render);
   document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
+  document.getElementById('dateHeader').addEventListener('click', () => {
+    if(document.getElementById('viewFilter').value !== 'today') return; // only meaningful in this view
+    TODAY_SORT_DIR = TODAY_SORT_DIR === 'asc' ? 'desc' : 'asc';
+    render();
+  });
 
   scheduleNextRefresh();
 }
