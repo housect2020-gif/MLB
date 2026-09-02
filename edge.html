@@ -713,13 +713,29 @@ function populateLegOptions(){
   updateLegRateLabel();
 }
 
-function shuffled(arr){
-  const a = arr.slice();
-  for(let i = a.length - 1; i > 0; i--){
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+// n-choose-k, used to size-check the exhaustive search below before running it.
+function binomialCoefficient(n, k){
+  if(k < 0 || k > n) return 0;
+  k = Math.min(k, n - k);
+  let result = 1;
+  for(let i = 0; i < k; i++){
+    result = result * (n - i) / (i + 1);
   }
-  return a;
+  return Math.round(result);
+}
+
+// Yields every k-index subset of [0..n), in order — the standard combinatorial
+// "next combination" algorithm.
+function* combinationIndices(n, k){
+  const idx = Array.from({ length: k }, (_, i) => i);
+  while(true){
+    yield idx.slice();
+    let i = k - 1;
+    while(i >= 0 && idx[i] === n - k + i) i--;
+    if(i < 0) return;
+    idx[i]++;
+    for(let j = i + 1; j < k; j++) idx[j] = idx[j - 1] + 1;
+  }
 }
 
 function generateCombos(){
@@ -734,21 +750,43 @@ function generateCombos(){
     return;
   }
 
-  const baseIdx = pool.map((_, i) => i);
-  const seen = new Set();
-  const combos = [];
-  let attempts = 0;
-  while(combos.length < comboCount && attempts < comboCount * 40){
-    attempts++;
-    const idx = shuffled(baseIdx).slice(0, legCount).sort((a,b) => a - b);
-    const sig = idx.join(',');
-    if(seen.has(sig)) continue;
-    seen.add(sig);
-    const legs = idx.map(i => pool[i]);
-    const combined = legs.reduce((p, g) => p * tierHitRate(g.tier), 1);
-    combos.push({ legs, combined });
+  // Exhaustively checks EVERY possible N-leg combination from the pool and
+  // ranks them by combined estimate, rather than randomly sampling a handful.
+  // A day's slate is small enough (usually under 15 games) that this is
+  // computationally trivial — there's no real reason to approximate, and
+  // random sampling could (and did) miss the actual best-odds combination
+  // entirely, which defeats the point of labeling a result "Best Combined
+  // Odds." The size cap below is just a safety net for an unexpectedly huge
+  // pool; it will essentially never trigger for a real MLB slate.
+  const totalPossible = binomialCoefficient(pool.length, legCount);
+  let combos = [];
+  if(totalPossible <= 200000){
+    for(const idx of combinationIndices(pool.length, legCount)){
+      const legs = idx.map(i => pool[i]);
+      const combined = legs.reduce((p, g) => p * tierHitRate(g.tier), 1);
+      combos.push({ legs, combined });
+    }
+    combos.sort((a, b) => b.combined - a.combined);
+    combos = combos.slice(0, comboCount);
+  } else {
+    // Fallback for a pool too large to enumerate exhaustively — random
+    // sampling, same as before, but this path shouldn't come up in practice.
+    const baseIdx = pool.map((_, i) => i);
+    const seen = new Set();
+    let attempts = 0;
+    while(combos.length < comboCount && attempts < comboCount * 40){
+      attempts++;
+      const idx = baseIdx.slice().sort(() => Math.random() - 0.5).slice(0, legCount).sort((a,b) => a - b);
+      const sig = idx.join(',');
+      if(seen.has(sig)) continue;
+      seen.add(sig);
+      const legs = idx.map(i => pool[i]);
+      const combined = legs.reduce((p, g) => p * tierHitRate(g.tier), 1);
+      combos.push({ legs, combined });
+    }
+    combos.sort((a, b) => b.combined - a.combined);
   }
-  combos.sort((a, b) => b.combined - a.combined);
+
   LAST_COMBOS = combos;
   renderCombos(combos);
 }
