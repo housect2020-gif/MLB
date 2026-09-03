@@ -66,14 +66,15 @@
     border-radius:var(--radius-sm); background:var(--surface); color:var(--text);
   }
 
-  table{border-collapse:collapse; width:100%; font-size:13px;}
+  table{border-collapse:collapse; width:100%; font-size:13px; table-layout:fixed;}
   thead th{
-    background:var(--colhead-bg); border:1px solid var(--grid); padding:9px 10px; text-align:left;
-    font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:.3px; font-size:10.5px;
-    white-space:nowrap; cursor:pointer; user-select:none;
+    background:var(--colhead-bg); border:1px solid var(--grid); padding:9px 8px; text-align:left;
+    font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:.3px; font-size:10px;
+    white-space:normal; word-wrap:break-word; line-height:1.3; vertical-align:bottom;
+    cursor:pointer; user-select:none;
   }
   thead th:hover{color:var(--accent);}
-  tbody td{border:1px solid var(--grid); padding:8px 10px; white-space:nowrap;}
+  tbody td{border:1px solid var(--grid); padding:8px 8px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
   tbody tr:nth-child(even){background:var(--colhead-bg);}
   tbody tr:hover{background:var(--accent-soft);}
   td.team{font-weight:800;}
@@ -132,17 +133,28 @@
     <h2>Every team, sorted by chance of a win streak</h2>
     <div style="overflow-x:auto;">
     <table id="streakTable">
+      <colgroup>
+        <col style="width:8%;">
+        <col style="width:9%;">
+        <col style="width:8%;">
+        <col style="width:12%;">
+        <col style="width:12%;">
+        <col style="width:10%;">
+        <col style="width:10%;">
+        <col style="width:15.5%;">
+        <col style="width:15.5%;">
+      </colgroup>
       <thead>
         <tr>
           <th data-key="team">Team</th>
           <th data-key="record">Record</th>
           <th data-key="winPct">Win %</th>
-          <th data-key="maxWin">Longest actual win streak</th>
-          <th data-key="maxLoss">Longest actual loss streak</th>
-          <th data-key="current">Current streak</th>
-          <th data-key="gamesLeft">Games left (est.)</th>
-          <th data-key="winStreakProb">Chance of a <span class="streak-len-label">5</span>-game win streak</th>
-          <th data-key="lossStreakProb">Chance of a <span class="streak-len-label">5</span>-game losing streak</th>
+          <th data-key="maxWin">Longest Actual Win Streak</th>
+          <th data-key="maxLoss">Longest Actual Loss Streak</th>
+          <th data-key="current">Current Streak</th>
+          <th data-key="gamesLeft">Games Left (est.)</th>
+          <th data-key="winStreakProb">Chance of <span class="streak-len-label">5</span>-Game Win Streak</th>
+          <th data-key="lossStreakProb">Chance of <span class="streak-len-label">5</span>-Game Losing Streak</th>
         </tr>
       </thead>
       <tbody id="streakBody"></tbody>
