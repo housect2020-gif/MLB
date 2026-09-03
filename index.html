@@ -171,6 +171,7 @@
     <a href="bestbet.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">Best Bet →</a>
     <a href="guarantee.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">Guarantee →</a>
     <a href="edge.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">Edge →</a>
+    <a href="streaks.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">Streaks →</a>
     <span class="refresh-note" id="lastUpdated">—</span>
     <span class="live-pill" id="livePill"><span class="live-dot"></span>LIVE · auto-refresh 30s</span>
   </div>
@@ -419,6 +420,13 @@ function computeH2H(teamA, teamB, asOfDate){
     if(!r.winner || r.winner === '—') return;
     const pair = new Set([r.away, r.home]);
     if(!pair.has(teamA) || !pair.has(teamB)) return;
+    // Only count meetings STRICTLY BEFORE this row's own date — otherwise a
+    // game that itself broke a tie (the leading team also won this exact
+    // game) silently erases the fact that it started from a tied series,
+    // since the tally would already include that game's own result by the
+    // time we check. This matters for real pre-game decisions: what mattered
+    // going in was the record BEFORE this game, not after it.
+    if(asOfDate && r.date >= asOfDate) return;
     if(r.winner === teamA) winsA++;
     else if(r.winner === teamB) winsB++;
   });
