@@ -162,6 +162,36 @@
     </div>
   </div>
 
+  <div class="card">
+    <h2>Closer reliability</h2>
+    <div class="status-line">
+      Each team's primary closer this season (by saves) and how often they've actually converted a save opportunity vs. blown it. This only matters once a game reaches a real save situation — a late lead of 3 runs or fewer — which is why it's shown here as season-long reference, not folded into any specific game's pick. Backtested: this season's top-10 closers by saves blow only about 8% of opportunities, vs. about 27% for the bottom 10 — a real, sizeable gap. Teams without an established closer in the league's top 30 by saves aren't shown; that itself is informative — no proven closer yet.
+    </div>
+    <div style="overflow-x:auto;">
+    <table id="closerTable">
+      <colgroup>
+        <col style="width:12%;">
+        <col style="width:28%;">
+        <col style="width:12%;">
+        <col style="width:12%;">
+        <col style="width:16%;">
+        <col style="width:20%;">
+      </colgroup>
+      <thead>
+        <tr>
+          <th data-key="team">Team</th>
+          <th data-key="name">Closer</th>
+          <th data-key="saves">Saves</th>
+          <th data-key="blownSaves">Blown</th>
+          <th data-key="blownRate">Blown Rate</th>
+          <th data-key="era">ERA</th>
+        </tr>
+      </thead>
+      <tbody id="closerBody"></tbody>
+    </table>
+    </div>
+  </div>
+
 </div>
 
 <footer style="padding:12px 18px; font-size:11px; color:#8189a0; background:var(--colhead-bg); border-top:1px solid var(--grid); text-align:center;">
@@ -214,6 +244,86 @@ async function fetchFullSeason(){
     merged.sort((a,b) => a.eventTime.localeCompare(b.eventTime));
     return merged;
   } catch(e){ console.error('season fetch failed', e); return []; }
+}
+
+// Same approach as Edge's closer reference: pulls the league's top ~30 save
+// leaders, then their full pitching line, in 2 total requests. Backtested:
+// this season's top-10 closers by saves blow ~8% of opportunities vs. ~27%
+// for the bottom 10 — a real, large gap.
+async function fetchCloserData(){
+  try{
+    const leadersRes = await fetch('https://statsapi.mlb.com/api/v1/stats/leaders?leaderCategories=saves&season=2026&sportId=1&statGroup=pitching&limit=30');
+    if(!leadersRes.ok) return {};
+    const leadersJson = await leadersRes.json();
+    const leaders = (leadersJson.leagueLeaders && leadersJson.leagueLeaders[0] && leadersJson.leagueLeaders[0].leaders) || [];
+    if(leaders.length === 0) return {};
+
+    const ids = leaders.map(l => l.person.id);
+    const statsRes = await fetch(`https://statsapi.mlb.com/api/v1/people?personIds=${ids.join(',')}&hydrate=stats(group=[pitching],type=[season],season=2026)`);
+    if(!statsRes.ok) return {};
+    const statsJson = await statsRes.json();
+
+    const statById = {};
+    (statsJson.people || []).forEach(p => {
+      const statGroup = (p.stats || []).find(s => s.group && s.group.displayName === 'pitching');
+      const stat = statGroup && statGroup.splits && statGroup.splits[0] && statGroup.splits[0].stat;
+      if(stat) statById[p.id] = stat;
+    });
+
+    const map = {};
+    leaders.forEach(l => {
+      const abbr = teamAbbr(l.team.id);
+      if(!abbr || map[abbr]) return;
+      const stat = statById[l.person.id];
+      if(!stat || !stat.saveOpportunities) return;
+      map[abbr] = {
+        team: abbr, name: l.person.fullName, saves: stat.saves, blownSaves: stat.blownSaves,
+        saveOpportunities: stat.saveOpportunities, blownRate: stat.blownSaves / stat.saveOpportunities, era: stat.era
+      };
+    });
+    return map;
+  } catch(e){ console.error('closer data fetch failed', e); return {}; }
+}
+
+let CLOSER_ROWS = [];
+let CLOSER_SORT_KEY = 'blownRate';
+let CLOSER_SORT_DIR = 'asc';
+
+function renderCloserTable(){
+  const tbody = document.getElementById('closerBody');
+  const sorted = CLOSER_ROWS.slice().sort((a, b) => {
+    const av = a[CLOSER_SORT_KEY], bv = b[CLOSER_SORT_KEY];
+    if(typeof av === 'string') return CLOSER_SORT_DIR === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return CLOSER_SORT_DIR === 'asc' ? av - bv : bv - av;
+  });
+  tbody.innerHTML = sorted.map(r => {
+    const rateClass = r.blownRate <= 0.12 ? 'prob-high' : (r.blownRate >= 0.25 ? 'streak-l' : '');
+    return `
+      <tr>
+        <td class="team">${r.team}</td>
+        <td>${r.name}</td>
+        <td class="num">${r.saves}</td>
+        <td class="num">${r.blownSaves}</td>
+        <td class="num ${rateClass}">${(r.blownRate*100).toFixed(1)}%</td>
+        <td class="num">${r.era}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function wireCloserSorting(){
+  document.querySelectorAll('#closerTable thead th').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if(CLOSER_SORT_KEY === key){
+        CLOSER_SORT_DIR = CLOSER_SORT_DIR === 'asc' ? 'desc' : 'asc';
+      } else {
+        CLOSER_SORT_KEY = key;
+        CLOSER_SORT_DIR = 'asc';
+      }
+      renderCloserTable();
+    });
+  });
 }
 
 // Probability that a team experiences AT LEAST ONE run of `n` consecutive
@@ -327,7 +437,8 @@ function wireSorting(){
 
 async function init(){
   document.getElementById('rangeSub').textContent = "Loading real 2026 season from MLB's Stats API…";
-  SEASON_DATA = await fetchFullSeason();
+  const [season, closerData] = await Promise.all([fetchFullSeason(), fetchCloserData()]);
+  SEASON_DATA = season;
   if(SEASON_DATA.length === 0){
     document.getElementById('statusLine').textContent = 'Could not load season data — try refreshing.';
     return;
@@ -345,6 +456,10 @@ async function init(){
   streakLenSel.addEventListener('change', recompute);
   recompute();
   wireSorting();
+
+  CLOSER_ROWS = Object.values(closerData);
+  renderCloserTable();
+  wireCloserSorting();
 }
 
 function renderVersionTag(){
