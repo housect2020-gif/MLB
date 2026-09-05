@@ -154,6 +154,7 @@
   <a class="back-link" href="guarantee.html" style="margin-left:16px;">Guarantee →</a>
   <a class="back-link" href="edge.html" style="margin-left:16px;">Edge →</a>
   <a class="back-link" href="streaks.html" style="margin-left:16px;">Streaks →</a>
+  <a class="back-link" href="picks.html" style="margin-left:16px;">My Picks →</a>
 </div>
 
 <div class="page-wrap">
@@ -249,6 +250,32 @@ let LAST10 = {};        // team -> {w,l} over their last 10 completed games
 let TODAY_GAMES = [];   // today's matchups: {away, home, status}
 let POOL = [];          // computed pick pool: {away, home, pick, confidence, h2hText, status}
 let LAST_PARLAYS = [];  // most recently generated parlay set, used by the PDF download
+
+// Shared "My Picks" storage — identical on the schedule sheet, Edge, and the
+// Picks page itself. Static pages with no backend, so localStorage (shared
+// across pages on the same site) is what lets a checkbox checked here show
+// up on picks.html.
+const PICKS_STORAGE_KEY = 'mlb_site_picks_v1';
+function loadSavedPicks(){
+  try{ return JSON.parse(localStorage.getItem(PICKS_STORAGE_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+function saveSavedPicksList(picks){
+  try{ localStorage.setItem(PICKS_STORAGE_KEY, JSON.stringify(picks)); }
+  catch(e){ console.error('Could not save picks', e); }
+}
+function isPickSaved(id){
+  return loadSavedPicks().some(p => p.id === id);
+}
+function toggleSavedPick(pick, isChecked){
+  let picks = loadSavedPicks();
+  if(isChecked){
+    if(!picks.some(p => p.id === pick.id)) picks.push({ ...pick, addedAt: new Date().toISOString() });
+  } else {
+    picks = picks.filter(p => p.id !== pick.id);
+  }
+  saveSavedPicksList(picks);
+}
 
 function todayFileStr(){
   const d = new Date();
@@ -565,11 +592,22 @@ function renderParlays(bySize){
     wrap.innerHTML = '<div class="empty-state">Couldn\'t build enough distinct parlays from this pool — try a larger game selection.</div>';
     return;
   }
+  const todayKey = new Date().toISOString().slice(0, 10);
   wrap.innerHTML = sizes.map(size => {
     const combos = bySize[size];
-    const cards = combos.map((p, i) => `
+    const cards = combos.map((p, i) => {
+      const legsSig = p.legs.map(g => `${g.away}${g.home}${g.pick}`).join('_');
+      const comboId = `parlays-combo-${todayKey}-${legsSig}`;
+      const checked = isPickSaved(comboId) ? 'checked' : '';
+      const legsJson = JSON.stringify(p.legs.map(g => ({ away: g.away, home: g.home, pick: g.pick }))).replace(/"/g, '&quot;');
+      return `
       <div class="parlay-card ${i === 0 ? 'best' : ''}">
-        <div class="parlay-rank">${i === 0 ? 'Highest confidence' : `Parlay ${i + 1}`} · ${size} legs</div>
+        <div class="parlay-rank">
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <input type="checkbox" class="parlay-pick-checkbox" data-pick-id="${comboId}" data-date="${todayKey}" data-legs="${legsJson}" data-combined="${p.combined}" ${checked} title="Add to My Picks">
+            ${i === 0 ? 'Highest confidence' : `Parlay ${i + 1}`} · ${size} legs
+          </label>
+        </div>
         <ul class="parlay-legs">
           ${p.legs.map(g => `<li><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
         </ul>
@@ -578,7 +616,8 @@ function renderParlays(bySize){
           <span class="value">${(p.combined * 100).toFixed(1)}%</span>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
     return `
       <div class="parlay-size-section">
         <h3 class="parlay-size-heading">${size}-Leg Parlays</h3>
@@ -672,6 +711,22 @@ async function init(){
   });
   document.getElementById('generateBtn').addEventListener('click', generateParlays);
   document.getElementById('downloadPdfBtn').addEventListener('click', downloadPdf);
+
+  document.getElementById('parlayResults').addEventListener('change', (e) => {
+    if(!e.target.classList.contains('parlay-pick-checkbox')) return;
+    const cb = e.target;
+    let legs = [];
+    try{ legs = JSON.parse(cb.dataset.legs); } catch(err){ /* leave empty on parse failure */ }
+    const pick = {
+      id: cb.dataset.pickId,
+      type: 'combo',
+      source: 'parlays',
+      date: cb.dataset.date,
+      legs,
+      combinedEstimate: parseFloat(cb.dataset.combined)
+    };
+    toggleSavedPick(pick, cb.checked);
+  });
 }
 
 // Shows the file's actual last-modified date (as reported by the browser/server)

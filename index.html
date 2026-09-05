@@ -176,6 +176,7 @@
     <a href="guarantee.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">Guarantee →</a>
     <a href="edge.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">Edge →</a>
     <a href="streaks.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">Streaks →</a>
+    <a href="picks.html" style="color:#cfe0ff; text-decoration:none; font-size:13px; font-weight:600;">My Picks →</a>
     <span class="refresh-note" id="lastUpdated">—</span>
     <span class="live-pill" id="livePill"><span class="live-dot"></span>LIVE · auto-refresh 30s</span>
   </div>
@@ -272,6 +273,32 @@ let LIVE_MAP = {}; // key: "AWAY@HOME" (display abbrs) for today -> {awayScore, 
 let allRows = []; // combined rows to render
 let CURRENT_FILTERED = []; // the rows currently shown in the table, after filters — used by CSV export
 let TODAY_SORT_DIR = 'asc'; // 'asc' (earliest game first) or 'desc' — only applies in the "Today & live" view, since every row there shares the same date and sorting by date alone doesn't distinguish anything; sorts by actual game start time instead
+
+// Shared "My Picks" storage — used identically on this page, Edge, Parlays,
+// and the Picks page itself. Since these are separate static pages with no
+// backend, localStorage (shared across all pages on the same site) is what
+// lets a checkbox checked here show up on picks.html.
+const PICKS_STORAGE_KEY = 'mlb_site_picks_v1';
+function loadSavedPicks(){
+  try{ return JSON.parse(localStorage.getItem(PICKS_STORAGE_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+function saveSavedPicksList(picks){
+  try{ localStorage.setItem(PICKS_STORAGE_KEY, JSON.stringify(picks)); }
+  catch(e){ console.error('Could not save picks', e); }
+}
+function isPickSaved(id){
+  return loadSavedPicks().some(p => p.id === id);
+}
+function toggleSavedPick(pick, isChecked){
+  let picks = loadSavedPicks();
+  if(isChecked){
+    if(!picks.some(p => p.id === pick.id)) picks.push({ ...pick, addedAt: new Date().toISOString() });
+  } else {
+    picks = picks.filter(p => p.id !== pick.id);
+  }
+  saveSavedPicksList(picks);
+}
 let SEASON_DATA = []; // populated at init() from the MLB Stats API, falls back to FALLBACK_DATA if that fails
 let STANDINGS = {}; // team -> {w, l} current overall season record, set by backfillSeasonRecords()
 let STANDINGS_BY_DATE = {}; // date -> {team -> {w, l}} — each team's record as of that specific date, for the H2H tiebreak
@@ -696,6 +723,18 @@ function render(){
       g2hMainText = `${h2hDisplay}${pendingTag}`;
     }
 
+    // Checkbox to send this game's straight H2H pick to the shared Picks
+    // page. Only offered when there's an actual favored team (not a bare,
+    // unresolved "Tied" with no lean) — there's nothing to pick otherwise.
+    const pickTeam = h2hTeam && h2hTeam !== 'Tied' ? h2hTeam : null;
+    let pickCheckbox = '';
+    if(pickTeam){
+      const pickId = `idx-${r.date}-${r.away}-${r.home}`;
+      const checked = isPickSaved(pickId) ? 'checked' : '';
+      const detailAttr = (r.h2h || '').replace(/"/g, '&quot;');
+      pickCheckbox = `<input type="checkbox" class="pick-checkbox" data-pick-id="${pickId}" data-date="${r.date}" data-away="${r.away}" data-home="${r.home}" data-pick="${pickTeam}" data-detail="${detailAttr}" ${checked} title="Add to My Picks">`;
+    }
+
     tr.innerHTML = `
       <th class="rownum">${i+1}</th>
       <td class="date">${r.date}${r.eventTime ? ' <span class="game-time">' + formatGameTime(r.eventTime) + '</span>' : ''}${r.isDoubleheader ? ' <span class="dh-badge">DH · Game ' + (r.gameNumber || '?') + '</span>' : ''}</td>
@@ -703,7 +742,7 @@ function render(){
       <td class="team">${r.home}</td>
       <td class="winner ${(r.winner==='—'&&!live)?'dash':''}">${winnerHtml}</td>
       <td class="record">${recordHtml}</td>
-      <td class="h2h">${r.h2h || ''}${actualWinner ? ' <span class="h2h-actual-winner">(' + actualWinner + ')</span>' : ''}</td>
+      <td class="h2h">${pickCheckbox} ${r.h2h || ''}${actualWinner ? ' <span class="h2h-actual-winner">(' + actualWinner + ')</span>' : ''}</td>
       <td class="team ${h2hCellClass}">${g2hMainText}</td>
     `;
     tbody.appendChild(tr);
@@ -723,6 +762,22 @@ function wireCellInspector(){
     const colLetters = ['','A','B','C','D','E','F','G'];
     document.getElementById('cellRef').textContent = colLetters[colIdx] + (parseInt(rowNum)+1);
     document.getElementById('cellContent').textContent = td.textContent.trim();
+  });
+
+  document.getElementById('sheetBody').addEventListener('change', (e) => {
+    if(!e.target.classList.contains('pick-checkbox')) return;
+    const cb = e.target;
+    const pick = {
+      id: cb.dataset.pickId,
+      type: 'straight',
+      source: 'schedule',
+      date: cb.dataset.date,
+      away: cb.dataset.away,
+      home: cb.dataset.home,
+      pick: cb.dataset.pick,
+      detail: cb.dataset.detail
+    };
+    toggleSavedPick(pick, cb.checked);
   });
 }
 
