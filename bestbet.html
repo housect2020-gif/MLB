@@ -103,7 +103,7 @@
 <div class="titlebar">
   <div>
     <h1>MLB Best Bet — H2H Parlay Combinations</h1>
-    <div class="sub" id="rangeSub">Loading tonight's slate and season data from ESPN…</div>
+    <div class="sub" id="rangeSub">Loading tonight's slate and season data…</div>
   </div>
   <div class="nav-links">
     <a href="index.html">← Schedule sheet</a>
@@ -383,35 +383,72 @@ function renderPool(){
   });
 }
 
-function shuffled(arr){
-  const a = arr.slice();
-  for(let i = a.length - 1; i > 0; i--){
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+// n-choose-k, used to size-check the exhaustive search below before running it.
+function binomialCoefficient(n, k){
+  if(k < 0 || k > n) return 0;
+  k = Math.min(k, n - k);
+  let result = 1;
+  for(let i = 0; i < k; i++){
+    result = result * (n - i) / (i + 1);
   }
-  return a;
+  return Math.round(result);
+}
+
+// Yields every k-index subset of [0..n), in order — the standard combinatorial
+// "next combination" algorithm.
+function* combinationIndices(n, k){
+  const idx = Array.from({ length: k }, (_, i) => i);
+  while(true){
+    yield idx.slice();
+    let i = k - 1;
+    while(i >= 0 && idx[i] === n - k + i) i--;
+    if(i < 0) return;
+    idx[i]++;
+    for(let j = i + 1; j < k; j++) idx[j] = idx[j - 1] + 1;
+  }
 }
 
 // Generates up to 10 distinct combinations of exactly `size` games from the pool.
+// Exhaustively checks EVERY possible N-leg combination from the pool and
+// ranks them by combined estimate, rather than randomly sampling a handful.
+// A day's slate is small enough (usually under 15 games) that this is
+// computationally trivial — random sampling could (and, on the Edge page,
+// did) miss the actual best-odds combination entirely, which defeats the
+// point of ranking these as "best" combos at all. The size cap below is just
+// a safety net for an unexpectedly huge pool; it won't trigger in practice.
 function generateCombos(size, count){
   if(POOL.length < size) return [];
-  const basePool = POOL.map((_, i) => i);
-  const seen = new Set();
-  const combos = [];
-  let attempts = 0;
-  while(combos.length < count && attempts < count * 40){
-    attempts++;
-    const legsIdx = shuffled(basePool).slice(0, size).sort((a,b) => a - b);
-    const sig = legsIdx.join(',');
-    if(seen.has(sig)) continue;
-    seen.add(sig);
-    const legs = legsIdx.map(i => POOL[i]);
-    const combined = legs.reduce((p, g) => p * g.confidence, 1);
-    combos.push({ legs, combined });
+  const totalPossible = binomialCoefficient(POOL.length, size);
+  let combos = [];
+  if(totalPossible <= 200000){
+    for(const idx of combinationIndices(POOL.length, size)){
+      const legs = idx.map(i => POOL[i]);
+      const combined = legs.reduce((p, g) => p * g.confidence, 1);
+      combos.push({ legs, combined });
+    }
+    combos.sort((a, b) => b.combined - a.combined);
+    combos = combos.slice(0, count);
+  } else {
+    // Fallback for a pool too large to enumerate exhaustively — shouldn't
+    // come up in practice for a real MLB slate.
+    const basePool = POOL.map((_, i) => i);
+    const seen = new Set();
+    let attempts = 0;
+    while(combos.length < count && attempts < count * 40){
+      attempts++;
+      const legsIdx = basePool.slice().sort(() => Math.random() - 0.5).slice(0, size).sort((a,b) => a - b);
+      const sig = legsIdx.join(',');
+      if(seen.has(sig)) continue;
+      seen.add(sig);
+      const legs = legsIdx.map(i => POOL[i]);
+      const combined = legs.reduce((p, g) => p * g.confidence, 1);
+      combos.push({ legs, combined });
+    }
+    combos.sort((a, b) => b.combined - a.combined);
   }
-  combos.sort((a, b) => b.combined - a.combined);
   return combos;
 }
+
 
 function renderCombos(containerId, combos, size){
   const wrap = document.getElementById(containerId);
@@ -438,7 +475,7 @@ function renderCombos(containerId, combos, size){
 }
 
 async function init(){
-  document.getElementById('poolStatus').textContent = 'Loading season data from ESPN (30 teams)…';
+  document.getElementById('poolStatus').textContent = 'Loading season data (30 teams)…';
 
   const [season, today] = await Promise.all([fetchFullSeason(), fetchTodayGames()]);
   SEASON_DATA = season;
@@ -446,7 +483,7 @@ async function init(){
   LAST10 = computeLast10(SEASON_DATA);
 
   if(today.length === 0){
-    document.getElementById('rangeSub').textContent = 'No games found for tonight, or ESPN data unavailable.';
+    document.getElementById('rangeSub').textContent = 'No games found for tonight, or data unavailable.';
     document.getElementById('poolStatus').textContent = 'No games available.';
     return;
   }
