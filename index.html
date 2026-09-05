@@ -781,6 +781,24 @@ function hasLiveGameNow(){
   return Object.values(LIVE_MAP).some(g => g.state === 'in');
 }
 
+// A real gap can exist between the bulk of an evening's games finishing and
+// the last couple of late-starting (often West coast) games actually
+// beginning. If we only check "is anything live right now" at exactly the
+// wrong moment — nothing currently in progress, but a game about to start —
+// we'd back off to a 1-hour refresh and miss that transition, leaving those
+// last games stuck showing "Scheduled" for up to an hour after they've
+// actually started. This checks scheduled games too, so we keep the fast
+// cadence through any such gap instead of falling asleep right before it.
+function hasUpcomingGameSoon(withinMs){
+  const now = Date.now();
+  return Object.values(LIVE_MAP).some(g => {
+    if(g.state !== 'pre' || !g.eventTime) return false;
+    const start = new Date(g.eventTime).getTime();
+    if(isNaN(start)) return false;
+    return start > now && start - now <= withinMs;
+  });
+}
+
 // Refreshes every 30s while a game is actually live, but backs off to once an
 // hour when nothing's in progress — no point hammering the API every 30 seconds
 // for a slate that's all "Scheduled" or already "Final". Re-checks after every
@@ -789,13 +807,19 @@ function updateLivePill(){
   const pill = document.getElementById('livePill');
   if(!pill) return;
   const live = hasLiveGameNow();
-  pill.innerHTML = live
-    ? '<span class="live-dot"></span>LIVE · auto-refresh 30s'
-    : '<span class="live-dot" style="animation:none; opacity:.5;"></span>No live games · refreshing hourly';
+  const soon = hasUpcomingGameSoon(60 * 60 * 1000);
+  if(live){
+    pill.innerHTML = '<span class="live-dot"></span>LIVE · auto-refresh 30s';
+  } else if(soon){
+    pill.innerHTML = '<span class="live-dot"></span>Game starting soon · auto-refresh 30s';
+  } else {
+    pill.innerHTML = '<span class="live-dot" style="animation:none; opacity:.5;"></span>No live games · refreshing hourly';
+  }
 }
 
 function scheduleNextRefresh(){
-  const delay = hasLiveGameNow() ? 30000 : 3600000; // 30s if something's live, 1hr otherwise
+  const soon = hasUpcomingGameSoon(60 * 60 * 1000); // any scheduled game starting within the next hour
+  const delay = (hasLiveGameNow() || soon) ? 30000 : 3600000; // 30s if something's live or about to start, 1hr otherwise
   setTimeout(async () => {
     await fetchLiveToday();
     allRows = mergeRows();
