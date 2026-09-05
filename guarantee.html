@@ -162,7 +162,7 @@
 <div class="titlebar">
   <div>
     <h1>MLB Guarantee — Locks &amp; Wildcards</h1>
-    <div class="sub" id="rangeSub">Loading standings and tonight's slate from ESPN…</div>
+    <div class="sub" id="rangeSub">Loading standings and tonight's slate…</div>
   </div>
   <div class="nav-links">
     <a href="index.html">← Schedule sheet</a>
@@ -749,7 +749,7 @@ function renderCombos(){
 }
 
 async function init(){
-  document.getElementById('standingsStatus').textContent = 'Loading season data from ESPN (30 teams)…';
+  document.getElementById('standingsStatus').textContent = 'Loading season data (30 teams)…';
   document.getElementById('lockStatus').textContent = 'Loading…';
 
   const [season, today] = await Promise.all([fetchFullSeason(), fetchTodayGames()]);

@@ -142,7 +142,7 @@
 <div class="titlebar">
   <div>
     <h1>MLB Parlay Builder</h1>
-    <div class="sub" id="rangeSub">Loading today's slate and season data from ESPN…</div>
+    <div class="sub" id="rangeSub">Loading today's slate and season data…</div>
   </div>
   <a class="back-link" href="index.html">← Back to schedule sheet</a>
   <a class="back-link" href="bestbet.html" style="margin-left:16px;">Best Bet →</a>
@@ -480,13 +480,29 @@ function updateGenerateEnabled(){
 }
 
 // Shuffles a copy of the array (Fisher-Yates).
-function shuffled(arr){
-  const a = arr.slice();
-  for(let i = a.length - 1; i > 0; i--){
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
+// n-choose-k, used to size-check the exhaustive search below before running it.
+function binomialCoefficient(n, k){
+  if(k < 0 || k > n) return 0;
+  k = Math.min(k, n - k);
+  let result = 1;
+  for(let i = 0; i < k; i++){
+    result = result * (n - i) / (i + 1);
   }
-  return a;
+  return Math.round(result);
+}
+
+// Yields every k-index subset of [0..n), in order — the standard combinatorial
+// "next combination" algorithm.
+function* combinationIndices(n, k){
+  const idx = Array.from({ length: k }, (_, i) => i);
+  while(true){
+    yield idx.slice();
+    let i = k - 1;
+    while(i >= 0 && idx[i] === n - k + i) i--;
+    if(i < 0) return;
+    idx[i]++;
+    for(let j = i + 1; j < k; j++) idx[j] = idx[j - 1] + 1;
+  }
 }
 
 function generateParlays(){
@@ -502,29 +518,33 @@ function generateParlays(){
   }
 
   const maxLegs = Math.min(basePool.length, userMaxLegs);
-  const seen = new Set();
-  const parlays = [];
-  let attempts = 0;
 
-  while(parlays.length < count && attempts < count * 25){
-    attempts++;
-    const legCount = 4 + (parlays.length % Math.max(1, maxLegs - 3));
-    const size = Math.min(legCount, maxLegs);
-    const legsIdx = shuffled(basePool).slice(0, size).sort((a,b) => a - b);
-    const sig = legsIdx.join(',');
-    if(seen.has(sig)) continue;
-    seen.add(sig);
-
-    const legs = legsIdx.map(i => POOL[i]);
-    const combined = legs.reduce((p, g) => p * g.confidence, 1);
-    parlays.push({ legs, combined });
+  // Exhaustively checks EVERY possible combination at EVERY leg count from 4
+  // up to maxLegs, then ranks them all together — rather than randomly
+  // sampling a handful of sizes and combos. Random sampling here could (and
+  // on Edge and Best Bet, did) miss the actual best-odds combination
+  // entirely. A day's pool is small enough that summing combinations across
+  // a handful of sizes is still computationally trivial; the size cap below
+  // is just a safety net for an unexpectedly huge pool.
+  let allCombos = [];
+  for(let size = 4; size <= maxLegs; size++){
+    const totalPossible = binomialCoefficient(basePool.length, size);
+    if(totalPossible > 200000) continue; // safety net — shouldn't trigger for a real slate
+    for(const idx of combinationIndices(basePool.length, size)){
+      const legsIdx = idx.map(i => basePool[i]);
+      const legs = legsIdx.map(i => POOL[i]);
+      const combined = legs.reduce((p, g) => p * g.confidence, 1);
+      allCombos.push({ legs, combined });
+    }
   }
+  allCombos.sort((a, b) => b.combined - a.combined);
+  const parlays = allCombos.slice(0, count);
 
-  parlays.sort((a, b) => b.combined - a.combined);
   LAST_PARLAYS = parlays;
   renderParlays(parlays);
   document.getElementById('downloadPdfBtn').disabled = parlays.length === 0;
 }
+
 
 function renderParlays(parlays){
   const wrap = document.getElementById('parlayResults');
@@ -596,7 +616,7 @@ function downloadPdf(){
 }
 
 async function init(){
-  document.getElementById('poolStatus').textContent = 'Loading season data from ESPN (30 teams)…';
+  document.getElementById('poolStatus').textContent = 'Loading season data (30 teams)…';
 
   const [season, today] = await Promise.all([fetchFullSeason(), fetchTodayGames()]);
   SEASON_DATA = season;
@@ -605,7 +625,7 @@ async function init(){
   TODAY_GAMES = today;
 
   if(TODAY_GAMES.length === 0){
-    document.getElementById('rangeSub').textContent = 'No games found for today, or ESPN data unavailable.';
+    document.getElementById('rangeSub').textContent = 'No games found for today, or data unavailable.';
     document.getElementById('poolStatus').textContent = 'No games to build parlays from right now.';
     return;
   }
