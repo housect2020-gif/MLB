@@ -113,6 +113,11 @@
 
   /* Parlay results */
   .parlay-grid{display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:14px;}
+  .parlay-sections{display:flex; flex-direction:column; gap:24px;}
+  .parlay-size-heading{
+    font-size:13px; font-weight:700; color:var(--accent); text-transform:uppercase;
+    letter-spacing:.4px; margin:0 0 12px;
+  }
   .parlay-card{
     border:1px solid var(--grid-strong); border-radius:var(--radius); padding:16px; background:var(--colhead-bg);
     position:relative;
@@ -169,7 +174,7 @@
         </select>
       </div>
       <div class="control-group">
-        <label>Number of parlays</label>
+        <label>Parlays per leg count</label>
         <select id="parlayCount">
           <option value="3">3</option>
           <option value="4">4</option>
@@ -215,7 +220,7 @@
       <h2 style="margin:0;">Generated parlays</h2>
       <button class="btn-secondary" id="downloadPdfBtn" disabled>Download PDF</button>
     </div>
-    <div class="parlay-grid" id="parlayResults"><div class="empty-state">Set your options above and click "Generate parlays".</div></div>
+    <div class="parlay-sections" id="parlayResults"><div class="empty-state">Set your options above and click "Generate parlays".</div></div>
   </div>
 
 </div>
@@ -519,51 +524,68 @@ function generateParlays(){
 
   const maxLegs = Math.min(basePool.length, userMaxLegs);
 
-  // Exhaustively checks EVERY possible combination at EVERY leg count from 4
-  // up to maxLegs, then ranks them all together — rather than randomly
-  // sampling a handful of sizes and combos. Random sampling here could (and
-  // on Edge and Best Bet, did) miss the actual best-odds combination
-  // entirely. A day's pool is small enough that summing combinations across
-  // a handful of sizes is still computationally trivial; the size cap below
-  // is just a safety net for an unexpectedly huge pool.
-  let allCombos = [];
+  // Each leg count gets its OWN exhaustive search and its OWN ranking —
+  // mirroring how Best Bet keeps its 4/5/6-leg sections separate. Ranking
+  // every size together in one shared list doesn't work: since every leg's
+  // confidence is under 1, a combined estimate can only shrink as legs are
+  // added, so a mixed ranking is always dominated by the shortest size
+  // regardless of pool size or max-legs setting — raising "max legs" would
+  // silently do nothing. Keeping sizes separate is what actually makes that
+  // setting (and a bigger custom pool) show something different.
+  const bySize = {};
   for(let size = 4; size <= maxLegs; size++){
     const totalPossible = binomialCoefficient(basePool.length, size);
-    if(totalPossible > 200000) continue; // safety net — shouldn't trigger for a real slate
-    for(const idx of combinationIndices(basePool.length, size)){
-      const legsIdx = idx.map(i => basePool[i]);
-      const legs = legsIdx.map(i => POOL[i]);
-      const combined = legs.reduce((p, g) => p * g.confidence, 1);
-      allCombos.push({ legs, combined });
+    let combos = [];
+    if(totalPossible <= 200000){
+      for(const idx of combinationIndices(basePool.length, size)){
+        const legsIdx = idx.map(i => basePool[i]);
+        const legs = legsIdx.map(i => POOL[i]);
+        const combined = legs.reduce((p, g) => p * g.confidence, 1);
+        combos.push({ legs, combined });
+      }
+      combos.sort((a, b) => b.combined - a.combined);
+      combos = combos.slice(0, count);
     }
+    if(combos.length > 0) bySize[size] = combos;
   }
-  allCombos.sort((a, b) => b.combined - a.combined);
-  const parlays = allCombos.slice(0, count);
 
-  LAST_PARLAYS = parlays;
-  renderParlays(parlays);
-  document.getElementById('downloadPdfBtn').disabled = parlays.length === 0;
+  // PDF download stays a flat list (grouped by size, best-first within each) —
+  // it doesn't need the section structure, just every combo we're showing.
+  LAST_PARLAYS = Object.keys(bySize).sort((a,b) => a - b).flatMap(size => bySize[size]);
+
+  renderParlays(bySize);
+  document.getElementById('downloadPdfBtn').disabled = LAST_PARLAYS.length === 0;
 }
 
 
-function renderParlays(parlays){
+function renderParlays(bySize){
   const wrap = document.getElementById('parlayResults');
-  if(parlays.length === 0){
+  const sizes = Object.keys(bySize).sort((a,b) => a - b);
+  if(sizes.length === 0){
     wrap.innerHTML = '<div class="empty-state">Couldn\'t build enough distinct parlays from this pool — try a larger game selection.</div>';
     return;
   }
-  wrap.innerHTML = parlays.map((p, i) => `
-    <div class="parlay-card ${i === 0 ? 'best' : ''}">
-      <div class="parlay-rank">${i === 0 ? 'Highest confidence' : `Parlay ${i + 1}`} · ${p.legs.length} legs</div>
-      <ul class="parlay-legs">
-        ${p.legs.map(g => `<li><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
-      </ul>
-      <div class="parlay-combined">
-        <span>Combined confidence</span>
-        <span class="value">${(p.combined * 100).toFixed(1)}%</span>
+  wrap.innerHTML = sizes.map(size => {
+    const combos = bySize[size];
+    const cards = combos.map((p, i) => `
+      <div class="parlay-card ${i === 0 ? 'best' : ''}">
+        <div class="parlay-rank">${i === 0 ? 'Highest confidence' : `Parlay ${i + 1}`} · ${size} legs</div>
+        <ul class="parlay-legs">
+          ${p.legs.map(g => `<li><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
+        </ul>
+        <div class="parlay-combined">
+          <span>Combined confidence</span>
+          <span class="value">${(p.combined * 100).toFixed(1)}%</span>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `).join('');
+    return `
+      <div class="parlay-size-section">
+        <h3 class="parlay-size-heading">${size}-Leg Parlays</h3>
+        <div class="parlay-grid">${cards}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 // Builds a clean, self-contained summary (independent of the page's own styling)
