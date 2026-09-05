@@ -123,6 +123,10 @@
   tbody tr:hover{background:var(--row-hover);}
   td.date{font-family:var(--font-mono); color:var(--sub); font-size:12px;}
   .game-time{color:var(--accent); font-size:10.5px; opacity:.8;}
+  .dh-badge{
+    font-size:9.5px; font-weight:700; color:var(--warn); background:var(--warn-soft);
+    padding:1px 6px; border-radius:99px; margin-left:4px; white-space:nowrap;
+  }
   .hist-score{font-size:10.5px; color:var(--sub); font-family:var(--font-mono); font-weight:400;}
   .h2h-actual-winner{font-size:10.5px; color:var(--sub); opacity:.85;}
   td.team{font-weight:700; letter-spacing:.2px;}
@@ -304,6 +308,7 @@ async function fetchFullSeason(){
                                   // same game counted twice (identical time)
           date: g.officialDate, // MLB's own "which calendar day this game belongs
                                  // to" field — more reliable than slicing a timestamp
+          gameNumber: g.gameNumber, // 1 or 2 — used below to label a real doubleheader
           away: awayAbbr,
           home: homeAbbr,
           winner,
@@ -320,7 +325,24 @@ async function fetchFullSeason(){
       const key = `${g.eventTime}|${g.away}|${g.home}`;
       if(!byKey.has(key)) byKey.set(key, g);
     });
-    const merged = Array.from(byKey.values()).map(({id, eventTime, ...rest}) => rest);
+    const merged = Array.from(byKey.values()).map(({id, ...rest}) => rest);
+
+    // Tags every game that shares a date+matchup with another game as part of
+    // a real doubleheader (confirmed: these are genuinely two separate,
+    // complete games — e.g. a rain-delayed game made up same-day — not a
+    // duplicate). Labeled rather than merged, since merging would erase real
+    // information: each game has its own winner and its own contribution to
+    // the season record and H2H tally.
+    const pairCounts = {};
+    merged.forEach(g => {
+      const pairKey = `${g.date}|${g.away}|${g.home}`;
+      pairCounts[pairKey] = (pairCounts[pairKey] || 0) + 1;
+    });
+    merged.forEach(g => {
+      const pairKey = `${g.date}|${g.away}|${g.home}`;
+      g.isDoubleheader = pairCounts[pairKey] > 1;
+    });
+
     merged.sort((a, b) => a.date.localeCompare(b.date));
     return merged;
   } catch(e){
@@ -676,7 +698,7 @@ function render(){
 
     tr.innerHTML = `
       <th class="rownum">${i+1}</th>
-      <td class="date">${r.date}${r.eventTime ? ' <span class="game-time">' + formatGameTime(r.eventTime) + '</span>' : ''}</td>
+      <td class="date">${r.date}${r.eventTime ? ' <span class="game-time">' + formatGameTime(r.eventTime) + '</span>' : ''}${r.isDoubleheader ? ' <span class="dh-badge">DH · Game ' + (r.gameNumber || '?') + '</span>' : ''}</td>
       <td class="team">${r.away}</td>
       <td class="team">${r.home}</td>
       <td class="winner ${(r.winner==='—'&&!live)?'dash':''}">${winnerHtml}</td>
@@ -759,7 +781,8 @@ function exportCsv(){
     // Includes the exact start time (not just the date) so a real doubleheader
     // (two different times) is visibly distinct from a would-be duplicate bug
     // (which would show the identical time twice) directly in the export.
-    const dateText = r.eventTime ? `${r.date} ${formatGameTime(r.eventTime)}` : r.date;
+    let dateText = r.eventTime ? `${r.date} ${formatGameTime(r.eventTime)}` : r.date;
+    if(r.isDoubleheader) dateText += ` (DH Game ${r.gameNumber || '?'})`;
 
     lines.push([dateText, r.away, r.home, winnerText, recordText, h2hText, h2hWinnerText].map(csvField).join(','));
   });
