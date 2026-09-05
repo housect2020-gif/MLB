@@ -546,6 +546,32 @@ function pickLockedGame(away, home, status, statusText, awayScore, homeScore){
 }
 
 let LOCK_TEAM_PICK_RATES = {}; // team -> {correct, total} — this team's hit rate historically, whenever the same lock-pick rule favored it
+
+// Shared "My Picks" storage — identical on the schedule sheet, Edge, Parlays,
+// and the Picks page itself. Static pages with no backend, so localStorage
+// (shared across pages on the same site) is what lets a checkbox checked
+// here show up on picks.html.
+const PICKS_STORAGE_KEY = 'mlb_site_picks_v1';
+function loadSavedPicks(){
+  try{ return JSON.parse(localStorage.getItem(PICKS_STORAGE_KEY) || '[]'); }
+  catch(e){ return []; }
+}
+function saveSavedPicksList(picks){
+  try{ localStorage.setItem(PICKS_STORAGE_KEY, JSON.stringify(picks)); }
+  catch(e){ console.error('Could not save picks', e); }
+}
+function isPickSaved(id){
+  return loadSavedPicks().some(p => p.id === id);
+}
+function toggleSavedPick(pick, isChecked){
+  let picks = loadSavedPicks();
+  if(isChecked){
+    if(!picks.some(p => p.id === pick.id)) picks.push({ ...pick, addedAt: new Date().toISOString() });
+  } else {
+    picks = picks.filter(p => p.id !== pick.id);
+  }
+  saveSavedPicksList(picks);
+}
 let WILD_TEAM_PICK_RATES = {}; // team -> {correct, total} — same idea, for the wildcard section's H2H-leader rule
 
 // Backtests the SAME lock-pick rule used in pickLockedGame() (rank mismatch,
@@ -738,15 +764,47 @@ function renderCombos(){
     branches = next;
   });
 
-  wrap.innerHTML = branches.map((wildPicks, i) => `
+  // A combined estimate — product of each leg's own historical hit rate
+  // (locks from LOCK_TEAM_PICK_RATES, wildcard picks from
+  // WILD_TEAM_PICK_RATES, both already computed above for the per-row chips)
+  // — so a saved combo shows a real number on the Picks page instead of a
+  // blank one, on the same basis as Edge and Parlays already use.
+  function legRate(team, tallyMap){
+    const t = tallyMap[team];
+    return t && t.total > 0 ? t.correct / t.total : 0.5; // 0.5 fallback when we have no history for this team specifically
+  }
+
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  wrap.innerHTML = branches.map((wildPicks, i) => {
+    const allLegs = [...locks, ...wildPicks];
+    const combined = allLegs.reduce((p, g) => {
+      const rate = locks.includes(g) ? legRate(g.pick, LOCK_TEAM_PICK_RATES) : legRate(g.pick, WILD_TEAM_PICK_RATES);
+      return p * rate;
+    }, 1);
+    const legsSig = allLegs.map(g => `${g.away}${g.home}${g.pick}`).join('_');
+    const comboId = `guarantee-combo-${todayKey}-${legsSig}`;
+    const checked = isPickSaved(comboId) ? 'checked' : '';
+    const legsJson = JSON.stringify(allLegs.map(g => ({ away: g.away, home: g.home, pick: g.pick }))).replace(/"/g, '&quot;');
+    return `
     <div class="combo-card">
-      <div class="combo-rank">Combo ${i + 1}</div>
+      <div class="combo-rank">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; text-transform:none; letter-spacing:normal;">
+          <input type="checkbox" class="combo-pick-checkbox" data-pick-id="${comboId}" data-date="${todayKey}" data-legs="${legsJson}" data-combined="${combined}" ${checked} title="Add to My Picks">
+          Combo ${i + 1}
+        </label>
+      </div>
       <ul class="combo-legs">
         ${locks.map(g => `<li class="locked"><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
         ${wildPicks.map(g => `<li class="wildcard"><span class="leg-teams">${g.away} @ ${g.home}</span><span class="leg-pick">${g.pick}</span></li>`).join('')}
       </ul>
+      <div class="combo-combined" style="display:flex; justify-content:space-between; padding-top:8px; margin-top:8px; border-top:1px solid var(--grid-strong); font-size:12.5px;">
+        <span style="color:var(--sub);">Combined estimate</span>
+        <span style="font-weight:700; font-family:var(--font-mono); color:var(--win);">${(combined*100).toFixed(1)}%</span>
+      </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function init(){
@@ -781,6 +839,22 @@ async function init(){
   renderLocks();
   renderWildcards();
   renderCombos();
+
+  document.getElementById('comboResults').addEventListener('change', (e) => {
+    if(!e.target.classList.contains('combo-pick-checkbox')) return;
+    const cb = e.target;
+    let legs = [];
+    try{ legs = JSON.parse(cb.dataset.legs); } catch(err){ /* leave empty on parse failure */ }
+    const pick = {
+      id: cb.dataset.pickId,
+      type: 'combo',
+      source: 'guarantee',
+      date: cb.dataset.date,
+      legs,
+      combinedEstimate: parseFloat(cb.dataset.combined)
+    };
+    toggleSavedPick(pick, cb.checked);
+  });
 }
 
 // Shows the file's actual last-modified date (as reported by the browser/server)

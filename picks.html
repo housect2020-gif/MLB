@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>My Picks — MLB Site</title>
@@ -66,6 +67,13 @@
     color:var(--live); cursor:pointer;
   }
   .btn-danger:hover{background:var(--live-soft);}
+  .btn-secondary{
+    font-family:var(--font-ui); font-size:12.5px; font-weight:700; padding:8px 16px;
+    border:1px solid var(--accent); border-radius:var(--radius-sm); background:var(--surface);
+    color:var(--accent); cursor:pointer;
+  }
+  .btn-secondary:hover{background:var(--accent-soft);}
+  .btn-secondary:disabled{opacity:.4; cursor:not-allowed;}
 
   .empty-state{color:var(--sub); font-size:13px; padding:24px; text-align:center;}
 
@@ -125,7 +133,10 @@
   <div class="card">
     <div class="top-bar">
       <div class="summary" id="summaryLine">Loading…</div>
-      <button class="btn-danger" id="clearAllBtn">Clear all picks</button>
+      <div style="display:flex; gap:10px;">
+        <button class="btn-secondary" id="downloadPdfBtn" disabled>Download PDF</button>
+        <button class="btn-danger" id="clearAllBtn">Clear all picks</button>
+      </div>
     </div>
   </div>
 
@@ -137,11 +148,13 @@
 
   <div class="card">
     <h2>Combo &amp; parlay picks</h2>
-    <div class="card-sub">Full parlays checked from Edge's Generated Combos or the Parlay Builder's Generated Parlays.</div>
+    <div class="card-sub">Full parlays checked from Edge's Generated Combos, the Parlay Builder's Generated Parlays, or Guarantee's Guarantee Combos.</div>
     <div id="comboPicksWrap"><div class="empty-state">Loading…</div></div>
   </div>
 
 </div>
+
+<div id="printArea" style="position:fixed; left:-9999px; top:0; width:720px; background:#fff; padding:30px; font-family:'Inter',Arial,sans-serif; color:#14213b;"></div>
 
 <footer style="padding:12px 18px; font-size:11px; color:#8189a0; background:var(--colhead-bg); border-top:1px solid var(--grid); text-align:center;">
   <div id="versionTag">version: loading…</div>
@@ -171,7 +184,7 @@ function formatAddedAt(iso){
   return d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' });
 }
 
-const SOURCE_LABEL = { schedule: 'Schedule sheet', edge: 'Edge', parlays: 'Parlay builder' };
+const SOURCE_LABEL = { schedule: 'Schedule sheet', edge: 'Edge', parlays: 'Parlay builder', guarantee: 'Guarantee' };
 
 function renderStraightPicks(picks){
   const wrap = document.getElementById('straightPicksWrap');
@@ -239,12 +252,91 @@ function render(){
   document.getElementById('summaryLine').innerHTML = `<strong>${straightCount}</strong> straight pick${straightCount === 1 ? '' : 's'} &middot; <strong>${comboCount}</strong> combo/parlay pick${comboCount === 1 ? '' : 's'} saved`;
   renderStraightPicks(picks);
   renderComboPicks(picks);
+  document.getElementById('downloadPdfBtn').disabled = picks.length === 0;
+}
+
+function todayLongStr(){
+  return new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+}
+function todayFileStr(){
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// Builds a clean, self-contained summary (independent of the page's own
+// styling) and hands it to html2pdf — same approach as the Parlay Builder's
+// PDF export. Covers both straight picks and combo/parlay picks, in whatever
+// order they're currently saved.
+function downloadPdf(){
+  const picks = loadSavedPicks();
+  if(picks.length === 0) return;
+
+  const straight = picks.filter(p => p.type === 'straight').sort((a,b) => (b.addedAt||'').localeCompare(a.addedAt||''));
+  const combos = picks.filter(p => p.type === 'combo').sort((a,b) => (b.addedAt||'').localeCompare(a.addedAt||''));
+
+  const straightRows = straight.length === 0 ? '' : `
+    <div style="font-size:14px; font-weight:800; color:#002d72; margin:20px 0 10px;">Straight Picks</div>
+    ${straight.map(p => `
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #e3e7ee; font-size:13px;">
+        <span style="color:#64708a;">${SOURCE_LABEL[p.source] || p.source} &middot; ${p.away} @ ${p.home}${p.date ? ' &middot; ' + p.date : ''}</span>
+        <span style="font-weight:700;">${p.pick}</span>
+      </div>
+    `).join('')}
+  `;
+
+  const comboRows = combos.length === 0 ? '' : `
+    <div style="font-size:14px; font-weight:800; color:#002d72; margin:24px 0 10px;">Combo &amp; Parlay Picks</div>
+    ${combos.map((p, i) => `
+      <div style="margin-bottom:14px; padding:14px 16px; border:1px solid #d8dde6; border-radius:8px;">
+        <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:#64708a; margin-bottom:8px;">
+          ${SOURCE_LABEL[p.source] || p.source} &middot; ${(p.legs||[]).length} legs
+        </div>
+        <div>
+          ${(p.legs||[]).map(g => `
+            <div style="display:flex; justify-content:space-between; font-size:13px; padding:3px 0;">
+              <span style="color:#64708a;">${g.away} @ ${g.home}</span>
+              <span style="font-weight:700;">${g.pick}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px dashed #d8dde6; font-size:13px;">
+          <span>Combined estimate</span>
+          <span style="font-weight:700; font-family:'JetBrains Mono',monospace; font-size:15px; color:#0a7d3f;">${((p.combinedEstimate||0)*100).toFixed(1)}%</span>
+        </div>
+      </div>
+    `).join('')}
+  `;
+
+  const printArea = document.getElementById('printArea');
+  printArea.innerHTML = `
+    <div style="border-bottom:3px solid #d50032; padding-bottom:14px; margin-bottom:10px;">
+      <div style="font-size:20px; font-weight:800; color:#002d72;">My Picks</div>
+      <div style="font-size:13px; color:#64708a; margin-top:4px;">${todayLongStr()}</div>
+    </div>
+    <div style="font-size:11px; color:#64708a; background:#eef1f9; border:1px solid #ccd8ef; border-radius:6px; padding:8px 12px; margin-bottom:10px; line-height:1.5;">
+      A personal watchlist saved from across the site — not real sportsbook odds or payouts, and not betting advice. Entertainment only.
+    </div>
+    ${straightRows}
+    ${comboRows}
+  `;
+
+  const opt = {
+    margin: 10,
+    filename: `my-picks-${todayFileStr()}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2 },
+    jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' }
+  };
+
+  html2pdf().set(opt).from(printArea).save();
 }
 
 document.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-remove-id]');
   if(btn) removePick(btn.dataset.removeId);
 });
+
+document.getElementById('downloadPdfBtn').addEventListener('click', downloadPdf);
 
 document.getElementById('clearAllBtn').addEventListener('click', () => {
   if(confirm('Remove all saved picks? This can\'t be undone.')){
