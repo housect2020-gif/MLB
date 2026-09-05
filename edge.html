@@ -181,7 +181,7 @@
     <div class="status-line" id="picksStatus">Loading…</div>
     <div class="pick-list" id="pickList">
       <div class="pick-row" style="background:transparent; border:none; font-weight:700; text-transform:uppercase; font-size:10.5px; color:var(--sub);">
-        <div>Matchup</div><div>H2H record</div><div>Tier</div><div>Pick</div><div style="text-align:right;">Tier hit rate</div><div style="text-align:right;">Pick's hit rate when picked</div>
+        <div>Matchup</div><div>H2H record</div><div>Tier</div><div>Pick</div><div id="tierRateHeader" style="text-align:right; cursor:pointer; user-select:none;" title="Click to sort by tier hit rate">Tier hit rate <span id="tierRateArrow"></span></div><div id="pickRateHeader" style="text-align:right; cursor:pointer; user-select:none;" title="Click to sort by pick's hit rate when picked">Pick's hit rate when picked <span id="pickRateArrow"></span></div>
       </div>
     </div>
   </div>
@@ -251,6 +251,8 @@ let STANDINGS = {};
 let TODAY_GAMES = [];
 let POOL = [];          // today's classified eligible games
 let CLOSER_DATA = {};   // team abbr -> {name, saves, blownSaves, saveOpportunities, blownRate, era} for that team's primary closer (season save leader), when we have data for them
+let PICKS_SORT_KEY = null; // 'tierRate' | 'pickRate' | null (null = natural game order)
+let PICKS_SORT_DIR = 'desc';
 let BACKTEST = {};       // tier -> {correct, total}
 let TEAM_PICK_RATES = {}; // team -> {correct, total} — this specific team's hit rate whenever it was the H2H pick
 let LEG_HIT_RATES = {};  // N -> {avg, days}
@@ -691,7 +693,40 @@ function renderPicks(){
 
   const tierName = { strong: 'Strong', moderate: 'Moderate', coinflip: 'Coinflip', nodata: 'No data', pitcher_edge: 'Pitcher edge' };
 
-  POOL.forEach(g => {
+  // Numeric values behind the two rate columns, computed once so both the
+  // display and the optional sort use the exact same numbers. Games with no
+  // real rate (No-data tier, or a pick with no season history yet) sort to
+  // the bottom regardless of direction, rather than jumping to the top of an
+  // ascending sort as a bare 0 or blank would.
+  const enriched = POOL.map(g => {
+    const tierRateValue = g.tier === 'pitcher_edge' ? PITCHER_EDGE_HISTORICAL_RATE
+      : (g.tier !== 'nodata' ? tierHitRate(g.tier) : null);
+    let pickRateValue = null;
+    if(g.pick && TEAM_PICK_RATES[g.pick]){
+      const tp = TEAM_PICK_RATES[g.pick];
+      pickRateValue = tp.correct / tp.total;
+    }
+    return { g, tierRateValue, pickRateValue };
+  });
+
+  let ordered = enriched;
+  if(PICKS_SORT_KEY){
+    const valueKey = PICKS_SORT_KEY === 'tierRate' ? 'tierRateValue' : 'pickRateValue';
+    ordered = enriched.slice().sort((a, b) => {
+      const av = a[valueKey], bv = b[valueKey];
+      if(av === null && bv === null) return 0;
+      if(av === null) return 1;  // no-data rows always sink to the bottom
+      if(bv === null) return -1;
+      return PICKS_SORT_DIR === 'asc' ? av - bv : bv - av;
+    });
+  }
+
+  const tierArrow = document.getElementById('tierRateArrow');
+  const pickArrow = document.getElementById('pickRateArrow');
+  if(tierArrow) tierArrow.textContent = PICKS_SORT_KEY === 'tierRate' ? (PICKS_SORT_DIR === 'asc' ? '▲' : '▼') : '';
+  if(pickArrow) pickArrow.textContent = PICKS_SORT_KEY === 'pickRate' ? (PICKS_SORT_DIR === 'asc' ? '▲' : '▼') : '';
+
+  ordered.forEach(({ g }) => {
     const badge = g.status === 'in'
       ? `<span class="status-badge live">${g.statusText || 'Live'}</span>`
       : (g.status === 'post'
@@ -921,6 +956,24 @@ async function init(){
 
   document.getElementById('includeModerate').addEventListener('change', populateLegOptions);
   document.getElementById('excludeLive').addEventListener('change', populateLegOptions);
+  document.getElementById('tierRateHeader').addEventListener('click', () => {
+    if(PICKS_SORT_KEY === 'tierRate'){
+      PICKS_SORT_DIR = PICKS_SORT_DIR === 'asc' ? 'desc' : 'asc';
+    } else {
+      PICKS_SORT_KEY = 'tierRate';
+      PICKS_SORT_DIR = 'desc';
+    }
+    renderPicks();
+  });
+  document.getElementById('pickRateHeader').addEventListener('click', () => {
+    if(PICKS_SORT_KEY === 'pickRate'){
+      PICKS_SORT_DIR = PICKS_SORT_DIR === 'asc' ? 'desc' : 'asc';
+    } else {
+      PICKS_SORT_KEY = 'pickRate';
+      PICKS_SORT_DIR = 'desc';
+    }
+    renderPicks();
+  });
   document.getElementById('legCount').addEventListener('change', updateLegRateLabel);
   document.getElementById('generateBtn').addEventListener('click', generateCombos);
 
