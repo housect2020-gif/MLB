@@ -84,6 +84,7 @@
   .prob-high{color:var(--win); font-weight:700;}
   .prob-low{color:var(--sub);}
   .sort-arrow{font-size:9px; opacity:.6;}
+  .last-blown-note{display:block; font-size:9.5px; color:var(--sub); font-weight:400; font-family:var(--font-ui);}
 
   .empty-state{color:var(--sub); font-size:13px; padding:20px; text-align:center;}
 </style>
@@ -167,6 +168,7 @@
     <div class="status-line">
       Each team's primary closer this season (by saves) and how often they've actually converted a save opportunity vs. blown it. This only matters once a game reaches a real save situation — a late lead of 3 runs or fewer — which is why it's shown here as season-long reference, not folded into any specific game's pick. Backtested: this season's top-10 closers by saves blow only about 8% of opportunities, vs. about 27% for the bottom 10 — a real, sizeable gap. Teams without an established closer in the league's top 30 by saves aren't shown; that itself is informative — no proven closer yet.
     </div>
+    <div class="status-line" id="closerStatus"></div>
     <div style="overflow-x:auto;">
     <table id="closerTable">
       <colgroup>
@@ -277,12 +279,37 @@ async function fetchCloserData(){
       const stat = statById[l.person.id];
       if(!stat || !stat.saveOpportunities) return;
       map[abbr] = {
-        team: abbr, name: l.person.fullName, saves: stat.saves, blownSaves: stat.blownSaves,
+        team: abbr, id: l.person.id, name: l.person.fullName, saves: stat.saves, blownSaves: stat.blownSaves,
         saveOpportunities: stat.saveOpportunities, blownRate: stat.blownSaves / stat.saveOpportunities, era: stat.era
       };
     });
     return map;
   } catch(e){ console.error('closer data fetch failed', e); return {}; }
+}
+
+// For each closer, pulls their game log and finds how many of their own
+// appearances have happened since their most recent blown save — "games ago"
+// meaning appearances by that pitcher, not calendar days or team games. One
+// request per closer (bounded to the same ~30-pitcher leaderboard we already
+// use), run in parallel — comparable in cost to the pitcher-ERA lookup on Edge.
+async function fetchLastBlownSaveInfo(closerMap){
+  const entries = Object.values(closerMap).filter(c => c.blownSaves > 0);
+  await Promise.all(entries.map(async (closer) => {
+    try{
+      const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${closer.id}/stats?stats=gameLog&group=pitching&season=2026`);
+      if(!res.ok) return;
+      const json = await res.json();
+      const splits = (json.stats && json.stats[0] && json.stats[0].splits) || [];
+      let lastBlownIdx = -1;
+      splits.forEach((s, i) => {
+        if(s.stat && s.stat.blownSaves >= 1) lastBlownIdx = i;
+      });
+      if(lastBlownIdx >= 0){
+        closer.appearancesSinceBlown = splits.length - 1 - lastBlownIdx;
+        closer.lastBlownDate = splits[lastBlownIdx].date;
+      }
+    } catch(e){ /* leave this closer without the extra detail on failure */ }
+  }));
 }
 
 let CLOSER_ROWS = [];
@@ -298,12 +325,18 @@ function renderCloserTable(){
   });
   tbody.innerHTML = sorted.map(r => {
     const rateClass = r.blownRate <= 0.12 ? 'prob-high' : (r.blownRate >= 0.25 ? 'streak-l' : '');
+    let lastBlownNote = '';
+    if(r.blownSaves > 0){
+      lastBlownNote = r.appearancesSinceBlown !== undefined
+        ? `<span class="last-blown-note">${r.appearancesSinceBlown === 0 ? 'last outing' : r.appearancesSinceBlown + ' games ago'}</span>`
+        : '';
+    }
     return `
       <tr>
         <td class="team">${r.team}</td>
         <td>${r.name}</td>
         <td class="num">${r.saves}</td>
-        <td class="num">${r.blownSaves}</td>
+        <td class="num">${r.blownSaves}${lastBlownNote}</td>
         <td class="num ${rateClass}">${(r.blownRate*100).toFixed(1)}%</td>
         <td class="num">${r.era}</td>
       </tr>
@@ -460,6 +493,12 @@ async function init(){
   CLOSER_ROWS = Object.values(closerData);
   renderCloserTable();
   wireCloserSorting();
+
+  document.getElementById('closerStatus').textContent = 'Checking each closer\'s recent history…';
+  await fetchLastBlownSaveInfo(closerData);
+  CLOSER_ROWS = Object.values(closerData);
+  renderCloserTable();
+  document.getElementById('closerStatus').textContent = '';
 }
 
 function renderVersionTag(){
