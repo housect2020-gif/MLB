@@ -73,6 +73,18 @@
     flex:1; font-family:var(--font-mono); font-size:13px; color:var(--text);
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
+  .h2h-stat-box{
+    font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--text);
+    background:var(--colhead-bg); border:1px solid var(--grid-strong); border-radius:var(--radius-sm);
+    padding:5px 12px; white-space:nowrap; flex-shrink:0;
+  }
+  .h2h-stat-box .stat-label{
+    font-family:var(--font-ui); font-size:9.5px; font-weight:700; color:var(--sub);
+    text-transform:uppercase; letter-spacing:.3px; margin-right:5px;
+  }
+  .h2h-stat-box .stat-pct{font-weight:800; margin-left:4px;}
+  .h2h-stat-box .stat-pct.good{color:var(--win);}
+  .h2h-stat-box .stat-pct.bad{color:var(--live);}
 
   /* ---- Toolbar: filters ---- */
   .toolbar{
@@ -189,6 +201,8 @@
   <div class="cell-ref" id="cellRef">A1</div>
   <div class="fx">fx</div>
   <div class="formula-content" id="cellContent">MLB Games - Schedule, Results, Records &amp; Head-to-Head Analysis</div>
+  <div class="h2h-stat-box" id="prevDayStatBox">Loading…</div>
+  <div class="h2h-stat-box" id="seasonStatBox">Loading…</div>
 </div>
 
 <div class="toolbar">
@@ -751,6 +765,63 @@ function render(){
   document.getElementById('countLabel').textContent = `${filtered.length} rows`;
 }
 
+// Finds the most recent date in SEASON_DATA strictly before `todayKey`. Not
+// just "sort and take the last one minus one" — SEASON_DATA can legitimately
+// include a few of TODAY's already-finished games (the season fetch covers
+// through today inclusive), so this explicitly excludes anything dated today
+// to land on the actual previous day's slate.
+function mostRecentPriorDate(seasonData, todayKey){
+  let best = null;
+  seasonData.forEach(r => {
+    if(r.date < todayKey && (!best || r.date > best)) best = r.date;
+  });
+  return best;
+}
+
+// Tallies how often the pre-game H2H pick actually matched the real winner,
+// across whatever rows are passed in — deliberately EXCLUDING any game whose
+// H2H series was tied before it started. Those were backtested at exactly
+// 50% (a coin flip decided only by a season-record tiebreak), so folding them
+// into a "how good are our H2H picks" number would water down what's actually
+// a real signal (a genuine head-to-head lead) with games that were never
+// meant to be predictive in the first place.
+function computeH2HAccuracyExcludingTied(rows){
+  let wins = 0, losses = 0;
+  rows.forEach(r => {
+    if(!r.winner || r.winner === '—') return; // only finished games have a real result to check
+    const wasPreGameTied = !!(r.h2h && r.h2h.startsWith('Tied'));
+    if(wasPreGameTied) return;
+    const h2hDisplay = (!r.h2h_winner || r.h2h_winner === '—') ? deriveH2HLeader(r.h2h) : r.h2h_winner;
+    const h2hTeam = extractH2HTeam(h2hDisplay);
+    if(!h2hTeam) return; // no resolvable pick to check (shouldn't happen once tied games are excluded, but a safe guard)
+    if(h2hTeam === r.winner) wins++; else losses++;
+  });
+  return { wins, losses };
+}
+
+function renderH2HStatBoxes(){
+  const todayKey = todayStr();
+  const prevDate = mostRecentPriorDate(SEASON_DATA, todayKey);
+  const prevDayRows = prevDate ? SEASON_DATA.filter(r => r.date === prevDate) : [];
+  const prevStats = computeH2HAccuracyExcludingTied(prevDayRows);
+
+  const seasonRows = SEASON_DATA.filter(r => r.date < todayKey);
+  const seasonStats = computeH2HAccuracyExcludingTied(seasonRows);
+
+  function fillBox(elId, stats, label, titleSuffix){
+    const total = stats.wins + stats.losses;
+    const pct = total > 0 ? (stats.wins / total * 100) : null;
+    const pctClass = pct === null ? '' : (pct >= 50 ? 'good' : 'bad');
+    const pctText = pct === null ? '—' : pct.toFixed(1) + '%';
+    const el = document.getElementById(elId);
+    el.innerHTML = `<span class="stat-label">${label}</span> W=${stats.wins} L=${stats.losses} <span class="stat-pct ${pctClass}">${pctText}</span>`;
+    el.title = `Pre-tied (coinflip) games excluded${titleSuffix ? ' — ' + titleSuffix : ''}`;
+  }
+
+  fillBox('prevDayStatBox', prevStats, 'Prev Day', prevDate ? prevDate : 'no prior completed day yet');
+  fillBox('seasonStatBox', seasonStats, 'Season', `through ${prevDate || todayKey}`);
+}
+
 function wireCellInspector(){
   document.getElementById('sheetBody').addEventListener('click', (e) => {
     const td = e.target.closest('td');
@@ -936,6 +1007,8 @@ async function init(){
   const dates = SEASON_DATA.map(r => r.date).sort();
   document.getElementById('rangeSub').textContent = `${dates[0]} → ${dates[dates.length-1]} · ${SEASON_DATA.length} games` + (season.length > 0 ? ' · live from MLB Stats API' : ' · sample data');
   document.getElementById('histThrough').textContent = dates[dates.length-1];
+
+  renderH2HStatBoxes();
 
   await fetchLiveToday();
   allRows = mergeRows();
