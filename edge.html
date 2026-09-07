@@ -681,18 +681,15 @@ function renderBacktest(){
   grid.innerHTML = ['strong','moderate','coinflip'].map(t => {
     const b = BACKTEST[t];
     const rate = b.total > 0 ? (b.correct / b.total * 100) : 0;
-    // Last-10 recent-form line — only on the Strong tile for now, in the same
-    // cell as the season-wide number, so you can see at a glance whether
-    // Strong picks have been running hot or cold lately versus the full-season
-    // baseline. A small sample on its own (10 games), so shown as a lighter,
-    // secondary line rather than replacing the season figure.
+    // Last-10 recent-form line, in the same cell as the season-wide number —
+    // shows whether each tier has been running hot or cold lately versus its
+    // full-season baseline. A small sample on its own (10 games), so shown as
+    // a lighter, secondary line rather than replacing the season figure.
     let last10Line = '';
-    if(t === 'strong'){
-      const l10 = lastNRate(b.history, 10);
-      if(l10){
-        const l10Class = l10.pct >= rate ? 'good' : 'bad';
-        last10Line = `<div class="n last10 ${l10Class}">Last 10: ${l10.correct}/${l10.total} (${l10.pct.toFixed(1)}%)</div>`;
-      }
+    const l10 = lastNRate(b.history, 10);
+    if(l10){
+      const l10Class = l10.pct >= rate ? 'good' : 'bad';
+      last10Line = `<div class="n last10 ${l10Class}">Last 10: ${l10.correct}/${l10.total} (${l10.pct.toFixed(1)}%)</div>`;
     }
     return `
       <div class="backtest-tile ${tierClass[t]}">
