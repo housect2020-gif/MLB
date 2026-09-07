@@ -202,6 +202,7 @@
   <div class="fx">fx</div>
   <div class="formula-content" id="cellContent">MLB Games - Schedule, Results, Records &amp; Head-to-Head Analysis</div>
   <div class="h2h-stat-box" id="prevDayStatBox">Loading…</div>
+  <div class="h2h-stat-box" id="last5StatBox">Loading…</div>
   <div class="h2h-stat-box" id="seasonStatBox">Loading…</div>
 </div>
 
@@ -778,6 +779,14 @@ function mostRecentPriorDate(seasonData, todayKey){
   return best;
 }
 
+// The 5 most recent distinct completed dates strictly before today — used
+// for the "Last 5 Days" stat box, same exclusion rule as the others.
+function lastNDistinctDates(seasonData, todayKey, n){
+  const dates = new Set();
+  seasonData.forEach(r => { if(r.date < todayKey) dates.add(r.date); });
+  return Array.from(dates).sort().slice(-n);
+}
+
 // Tallies how often the pre-game H2H pick actually matched the real winner,
 // across whatever rows are passed in — deliberately EXCLUDING any game whose
 // H2H series was tied before it started. Those were backtested at exactly
@@ -805,6 +814,10 @@ function renderH2HStatBoxes(){
   const prevDayRows = prevDate ? SEASON_DATA.filter(r => r.date === prevDate) : [];
   const prevStats = computeH2HAccuracyExcludingTied(prevDayRows);
 
+  const last5Dates = lastNDistinctDates(SEASON_DATA, todayKey, 5);
+  const last5Rows = SEASON_DATA.filter(r => last5Dates.includes(r.date));
+  const last5Stats = computeH2HAccuracyExcludingTied(last5Rows);
+
   const seasonRows = SEASON_DATA.filter(r => r.date < todayKey);
   const seasonStats = computeH2HAccuracyExcludingTied(seasonRows);
 
@@ -819,6 +832,7 @@ function renderH2HStatBoxes(){
   }
 
   fillBox('prevDayStatBox', prevStats, 'Prev Day', prevDate ? prevDate : 'no prior completed day yet');
+  fillBox('last5StatBox', last5Stats, 'Last 5 Days', last5Dates.length > 0 ? `${last5Dates[0]} through ${last5Dates[last5Dates.length-1]}` : 'not enough completed days yet');
   fillBox('seasonStatBox', seasonStats, 'Season', `through ${prevDate || todayKey}`);
 }
 
