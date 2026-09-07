@@ -165,6 +165,7 @@
   .h2h-mismatch{background:var(--live-soft) !important; color:var(--live) !important; font-weight:700;}
   .h2h-loc{font-weight:400; font-size:11px; color:var(--sub); opacity:.85;}
   .h2h-actual-loser{font-weight:400; font-size:10.5px; color:var(--sub); opacity:.7;}
+  .h2h-tier-tag{font-weight:600; font-size:10px; color:var(--accent); opacity:.75;}
   .h2h-pretied{font-weight:400; font-size:9.5px; color:var(--sub); opacity:.65; font-style:italic;}
 
   footer{padding:12px 18px; font-size:11px; color:#8189a0; background:var(--colhead-bg); border-top:1px solid var(--grid);}
@@ -468,6 +469,21 @@ function extractH2HTeam(displayVal){
   return m ? m[1] : displayVal;
 }
 
+// Same tier classification the Edge page uses (Strong: 3+ game H2H lead,
+// Moderate: 1-2 game lead, Coinflip: tied series, No data: no meetings yet)
+// — derived here from the already-computed H2H text rather than recomputing
+// the raw head-to-head tally a second time.
+function classifyTierFromH2HText(h2hText){
+  if(!h2hText) return null;
+  if(h2hText === 'No meetings yet') return 'nodata';
+  if(h2hText.startsWith('Tied')) return 'coinflip';
+  const m = h2hText.match(/^.+ leads (\d+)-(\d+)$/);
+  if(!m) return null;
+  const margin = parseInt(m[1], 10) - parseInt(m[2], 10);
+  return margin >= 3 ? 'strong' : 'moderate';
+}
+const TIER_DISPLAY_NAME = { strong: 'Strong', moderate: 'Moderate', coinflip: 'Coinflip', nodata: 'No data' };
+
 // Computes a head-to-head record between two teams by scanning every completed
 // game in the full dataset (regardless of which side was home/away), so it works
 // for ANY matchup — including today's real matchups that may not match the
@@ -727,15 +743,18 @@ function render(){
     // tells you whether H2H got this one right, rather than requiring you to
     // cross-reference column F. Before the game's played, there's no actual
     // result yet, so this falls back to showing the H2H pick itself (uncolored).
+    const tierLabel = TIER_DISPLAY_NAME[classifyTierFromH2HText(r.h2h)];
+    const tierTag = tierLabel ? ` <span class="h2h-tier-tag">(${tierLabel})</span>` : '';
+
     let g2hMainText;
     if(actualWinner){
       const winnerLoc = actualWinner === r.home ? ' <span class="h2h-loc">(H)</span>' : ' <span class="h2h-loc">(A)</span>';
-      g2hMainText = `${actualWinner}${winnerLoc}${actualLoser ? ' <span class="h2h-actual-loser">(' + actualLoser + ')</span>' : ''}${preTiedTag}`;
+      g2hMainText = `${actualWinner}${winnerLoc}${tierTag}${actualLoser ? ' <span class="h2h-actual-loser">(' + actualLoser + ')</span>' : ''}${preTiedTag}`;
     } else {
       let pendingTag = '';
       if(h2hTeam === r.home) pendingTag = ' <span class="h2h-loc">(H)</span>';
       else if(h2hTeam === r.away) pendingTag = ' <span class="h2h-loc">(A)</span>';
-      g2hMainText = `${h2hDisplay}${pendingTag}`;
+      g2hMainText = `${h2hDisplay}${pendingTag}${tierTag}`;
     }
 
     // Checkbox to send this game's straight H2H pick to the shared Picks
@@ -911,12 +930,15 @@ function exportCsv(){
     // story as the live table — a correct or incorrect pick that came from a
     // tied-series coin flip (50% backtested) rather than a real H2H lead.
     const wasPreGameTiedCsv = !!(r.h2h && r.h2h.startsWith('Tied'));
+    const tierLabelCsv = TIER_DISPLAY_NAME[classifyTierFromH2HText(r.h2h)];
+    const tierTagCsv = tierLabelCsv ? ` (${tierLabelCsv})` : '';
     let h2hWinnerText;
     if(actualWinnerText){
       const actualLoserText = actualWinnerText === r.away ? r.home : r.away;
-      h2hWinnerText = `${actualWinnerText} (${actualLoserText})${wasPreGameTiedCsv ? ' (pre-tied)' : ''}`;
+      h2hWinnerText = `${actualWinnerText}${tierTagCsv} (${actualLoserText})${wasPreGameTiedCsv ? ' (pre-tied)' : ''}`;
     } else {
-      h2hWinnerText = (!r.h2h_winner || r.h2h_winner === '—') ? deriveH2HLeader(r.h2h) : r.h2h_winner;
+      const pendingH2hText = (!r.h2h_winner || r.h2h_winner === '—') ? deriveH2HLeader(r.h2h) : r.h2h_winner;
+      h2hWinnerText = `${pendingH2hText}${tierTagCsv}`;
     }
     // Includes the exact start time (not just the date) so a real doubleheader
     // (two different times) is visibly distinct from a would-be duplicate bug
