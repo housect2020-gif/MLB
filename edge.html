@@ -164,7 +164,7 @@
 <div class="page-wrap">
 
   <div class="disclaimer">
-    <strong>What this is:</strong> a filter, not a prediction model. Every game this season is classified by how decisive the head-to-head record between the two teams is — a real 3+ game H2H lead ("Strong"), a 1-2 game lead ("Moderate"), or a tied series decided only by season-record tiebreak ("Coinflip"). On top of that, tonight's starting pitchers are checked: on a Strong pick, it's flagged if the better-pitching starter is actually going the other way; on a Coinflip or No-data game, a genuinely large gap between the two starters' recent ERA (2.00+ over the last 90 days) can promote it to a usable "Pitcher edge" pick. The H2H backtest numbers below are computed live against every completed game this season, so they update as the season goes — the pitcher-edge rate (~72%) is from a one-time test and is kept visually distinct rather than presented as equally verified. Stacking multiple legs into a parlay multiplies the odds against you even when each individual pick is strong — see the note under "Combos" before reading too much into the combined percentage. Not real sportsbook odds, not betting advice — entertainment only.
+    <strong>What this is:</strong> a filter, not a prediction model. Every game this season is classified by how decisive the head-to-head record between the two teams is — a real 3+ game H2H lead ("Strong"), a 1-2 game lead ("Moderate"), or a tied series decided only by season-record tiebreak ("Coinflip"). On top of that, tonight's starting pitchers are checked: on a Strong or Moderate pick, it's flagged if the better-pitching starter is actually going the other way (backtested: this widens or narrows the real odds noticeably on both tiers, more so on Moderate); on a Coinflip or No-data game, a genuinely large gap between the two starters' recent ERA (2.00+ over the last 90 days) can promote it to a usable "Pitcher edge" pick. The H2H backtest numbers below are computed live against every completed game this season, so they update as the season goes — the pitcher-edge rate (~72%) is from a one-time test and is kept visually distinct rather than presented as equally verified. Stacking multiple legs into a parlay multiplies the odds against you even when each individual pick is strong — see the note under "Combos" before reading too much into the combined percentage. Not real sportsbook odds, not betting advice — entertainment only.
   </div>
 
   <div class="card">
@@ -663,7 +663,13 @@ function applyPitcherSignal(game, eraMap){
   let pick = game.pick;
   let source = game.source;
 
-  if(game.tier === 'strong' && hasERA){
+  // Confirm/warn was originally only checked on Strong-tier picks (validated
+  // gap: 84.3% agree vs. 78.1% disagree). Extended to Moderate tier after a
+  // dedicated backtest showed the effect is actually LARGER there — 70.5%
+  // agree vs. 55.9% disagree (n=336/304, a statistically solid gap, not noise)
+  // — meaning a Moderate pick the pitcher backs up is close to Strong-tier
+  // reliability, while one it contradicts is barely better than a coin flip.
+  if((game.tier === 'strong' || game.tier === 'moderate') && hasERA){
     pitcherSignal = eraPick === game.pick ? 'confirm' : 'warn';
   } else if((game.tier === 'coinflip' || game.tier === 'nodata') && hasERA && eraGap >= PITCHER_EDGE_MIN_GAP){
     tier = 'pitcher_edge';
