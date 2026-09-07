@@ -64,6 +64,9 @@
   .backtest-tile .label{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; color:var(--sub); margin-bottom:6px;}
   .backtest-tile .pct{font-family:var(--font-mono); font-weight:800; font-size:24px;}
   .backtest-tile .n{font-size:11px; color:var(--sub); margin-top:2px;}
+  .backtest-tile .n.last10{font-size:10.5px; margin-top:6px; padding-top:6px; border-top:1px dashed var(--grid-strong); font-weight:600;}
+  .backtest-tile .n.last10.good{color:var(--win);}
+  .backtest-tile .n.last10.bad{color:var(--warn);}
   .tile-strong .pct{color:var(--win);}
   .tile-moderate .pct{color:var(--warn);}
   .tile-coinflip .pct{color:var(--live);}
@@ -393,14 +396,35 @@ function classifyMatchup(away, home){
 // site always shows), then check whether that classification's pick matches
 // what actually happened.
 function runBacktest(){
-  const tally = { strong: {correct:0, total:0}, moderate: {correct:0, total:0}, coinflip: {correct:0, total:0} };
+  const tally = {
+    strong: {correct:0, total:0, history:[]},
+    moderate: {correct:0, total:0, history:[]},
+    coinflip: {correct:0, total:0, history:[]}
+  };
   SEASON_DATA.forEach(r => {
     const c = classifyMatchup(r.away, r.home);
     if(c.tier === 'nodata' || !c.pick) return;
+    const isCorrect = c.pick === r.winner;
     tally[c.tier].total++;
-    if(c.pick === r.winner) tally[c.tier].correct++;
+    if(isCorrect) tally[c.tier].correct++;
+    // SEASON_DATA is already sorted chronologically (fetchFullSeason sorts by
+    // date before returning), so pushing in forEach order gives a
+    // chronological history for this tier — used below to show a "last N"
+    // recent-form figure alongside the season-wide rate.
+    tally[c.tier].history.push(isCorrect);
   });
   return tally;
+}
+
+// Hit rate over just the most recent N games of a tier's chronological
+// history, as a "recent form" figure alongside the season-wide rate — a
+// large season sample is the more statistically reliable number, but a
+// short recent window can surface a hot or cold stretch worth knowing about.
+function lastNRate(history, n){
+  const recent = history.slice(-n);
+  if(recent.length === 0) return null;
+  const correct = recent.filter(Boolean).length;
+  return { correct, total: recent.length, pct: correct / recent.length * 100 };
 }
 
 // For every team, tallies how often that team specifically was the H2H pick
@@ -657,11 +681,25 @@ function renderBacktest(){
   grid.innerHTML = ['strong','moderate','coinflip'].map(t => {
     const b = BACKTEST[t];
     const rate = b.total > 0 ? (b.correct / b.total * 100) : 0;
+    // Last-10 recent-form line — only on the Strong tile for now, in the same
+    // cell as the season-wide number, so you can see at a glance whether
+    // Strong picks have been running hot or cold lately versus the full-season
+    // baseline. A small sample on its own (10 games), so shown as a lighter,
+    // secondary line rather than replacing the season figure.
+    let last10Line = '';
+    if(t === 'strong'){
+      const l10 = lastNRate(b.history, 10);
+      if(l10){
+        const l10Class = l10.pct >= rate ? 'good' : 'bad';
+        last10Line = `<div class="n last10 ${l10Class}">Last 10: ${l10.correct}/${l10.total} (${l10.pct.toFixed(1)}%)</div>`;
+      }
+    }
     return `
       <div class="backtest-tile ${tierClass[t]}">
         <div class="label">${tierLabel[t]}</div>
         <div class="pct">${b.total > 0 ? rate.toFixed(1) + '%' : '—'}</div>
         <div class="n">${b.correct}/${b.total} games this season</div>
+        ${last10Line}
       </div>
     `;
   }).join('');
