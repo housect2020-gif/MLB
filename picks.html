@@ -163,6 +163,20 @@
 <script>
 const PICKS_STORAGE_KEY = 'mlb_site_picks_v1';
 
+// Computes today's date in US Eastern time — same convention every other
+// page on the site uses (MLB's own schedule data is anchored to US Eastern),
+// so the PDF export's date/filename matches what the rest of the site
+// considers "today" regardless of which timezone the viewer is actually in.
+function dateStrET(d){
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(d || new Date());
+  const get = (type) => parts.find(p => p.type === type).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+function todayStr(){ return dateStrET(); }
+
+
 function loadSavedPicks(){
   try{ return JSON.parse(localStorage.getItem(PICKS_STORAGE_KEY) || '[]'); }
   catch(e){ return []; }
@@ -256,11 +270,12 @@ function render(){
 }
 
 function todayLongStr(){
-  return new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  }).format(new Date());
 }
 function todayFileStr(){
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return todayStr(); // US Eastern "today"
 }
 
 // Builds a clean, self-contained summary (independent of the page's own

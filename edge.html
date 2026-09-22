@@ -248,6 +248,23 @@ const TEAM_ID_MAP = {
 };
 function teamAbbr(id){ return TEAM_ID_MAP[id] || null; }
 
+// Computes a date string in US Eastern time — the timezone MLB's own
+// schedule data is anchored to. Using the viewer's local clock here was a
+// real bug: a viewer outside US time zones could have their local calendar
+// day roll over while it's still "today" by MLB's own reckoning, silently
+// pulling the wrong day's slate. Pass a Date to convert that moment, or
+// nothing for right now. Intl.DateTimeFormat handles the EDT/EST switch
+// automatically, so this stays correct across the whole season.
+function dateStrET(d){
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(d || new Date());
+  const get = (type) => parts.find(p => p.type === type).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+function todayStr(){ return dateStrET(); }
+
+
 const SEASON_START = '2026-03-26'; // Opening Day 2026
 
 let SEASON_DATA = [];
@@ -296,8 +313,7 @@ let LAST_COMBOS = [];
 // no longer needs ~150 separate day-by-day requests at all.
 async function fetchFullSeason(){
   try{
-    const todayD = new Date();
-    const endStr = `${todayD.getFullYear()}-${String(todayD.getMonth()+1).padStart(2,'0')}-${String(todayD.getDate()).padStart(2,'0')}`;
+    const endStr = todayStr(); // US Eastern "today" — see dateStrET()/todayStr() above
     const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${SEASON_START}&endDate=${endStr}`);
     if(!res.ok) return [];
     const json = await res.json();
@@ -501,16 +517,25 @@ function computeLegHitRates(){
 }
 
 // Formats a game's exact start timestamp as a readable local time (e.g. "4:07 PM").
+// Always shows the game's start time in US Eastern (labeled explicitly),
+// instead of silently converting to the viewer's own local timezone — avoids
+// a time that could otherwise roll into a different calendar day than the
+// date shown next to it for a viewer outside US time zones.
 function formatGameTime(iso){
   if(!iso) return '';
   const d = new Date(iso);
   if(isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const timeStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit'
+  }).format(d);
+  const tzName = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', timeZoneName: 'short'
+  }).formatToParts(d).find(p => p.type === 'timeZoneName').value;
+  return `${timeStr} ${tzName}`;
 }
 
 async function fetchTodayGames(){
-  const d = new Date();
-  const dateParam = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const dateParam = todayStr(); // US Eastern "today"
   try{
     const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateParam}&hydrate=probablePitcher`);
     if(!res.ok) return [];
@@ -561,11 +586,14 @@ async function fetchTodayGames(){
 async function fetchPitcherERAs(pitcherIds){
   const uniqueIds = [...new Set(pitcherIds.filter(id => id))];
   if(uniqueIds.length === 0) return {};
-  const today = new Date();
-  const endStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-  const windowStart = new Date(today);
-  windowStart.setDate(windowStart.getDate() - 90);
-  const startStr = `${windowStart.getFullYear()}-${String(windowStart.getMonth()+1).padStart(2,'0')}-${String(windowStart.getDate()).padStart(2,'0')}`;
+  const endStr = todayStr(); // US Eastern "today"
+  // Anchor at noon UTC on that date before subtracting days — noon UTC is
+  // always solidly mid-day in US Eastern (never near a date boundary there),
+  // so the 90-day-back arithmetic can't accidentally land on the wrong ET
+  // calendar day the way subtracting from an ambiguous local time could.
+  const anchor = new Date(endStr + 'T12:00:00Z');
+  anchor.setUTCDate(anchor.getUTCDate() - 90);
+  const startStr = dateStrET(anchor);
 
   const eraMap = {};
   await Promise.all(uniqueIds.map(async (id) => {
@@ -852,7 +880,7 @@ function renderPicks(){
     // today's date so it stays stable across this page's own auto-refresh.
     let pickCheckbox = '';
     if(g.pick){
-      const todayKey = new Date().toISOString().slice(0, 10);
+      const todayKey = todayStr(); // US Eastern "today" — keeps pick IDs stable and consistent for every viewer
       const pickId = `edge-${todayKey}-${g.away}-${g.home}`;
       const checked = isPickSaved(pickId) ? 'checked' : '';
       const detailAttr = `${tierName[g.tier]} tier — ${g.source}`.replace(/"/g, '&quot;');
@@ -986,7 +1014,7 @@ function renderCombos(combos){
     wrap.innerHTML = '<div class="empty-state">Could not build combinations from this pool.</div>';
     return;
   }
-  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayKey = todayStr(); // US Eastern "today" — keeps pick IDs stable and consistent for every viewer
   wrap.innerHTML = combos.map((c, i) => {
     const legsSig = c.legs.map(g => `${g.away}${g.home}${g.pick}`).join('_');
     const comboId = `edge-combo-${todayKey}-${legsSig}`;

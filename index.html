@@ -277,12 +277,20 @@ const TEAM_ID_MAP = {
 };
 function teamAbbr(id){ return TEAM_ID_MAP[id] || null; }
 
+// Computes "today" in US Eastern time — the timezone MLB's own schedule data
+// is actually anchored to (a game's "officialDate" reflects the US baseball
+// day, not UTC or the viewer's own clock). Using the viewer's local time here
+// was a real bug: someone viewing from well ahead of US time (Europe, say)
+// could have their local calendar day roll over while it's still "today" by
+// MLB's own reckoning, making every row's date/highlighting logic silently
+// work off the wrong day. Intl.DateTimeFormat handles the EDT/EST switch
+// automatically, so this stays correct across the whole season.
 function todayStr(){
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth()+1).padStart(2,'0');
-  const day = String(d.getDate()).padStart(2,'0');
-  return `${y}-${m}-${day}`;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const get = (type) => parts.find(p => p.type === type).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 let LIVE_MAP = {}; // key: "AWAY@HOME" (display abbrs) for today -> {awayScore, homeScore, status, winner}
@@ -329,8 +337,7 @@ const SEASON_START = '2026-03-26'; // Opening Day 2026
 // no longer needs ~150 separate day-by-day requests at all.
 async function fetchFullSeason(){
   try{
-    const todayD = new Date();
-    const endStr = `${todayD.getFullYear()}-${String(todayD.getMonth()+1).padStart(2,'0')}-${String(todayD.getDate()).padStart(2,'0')}`;
+    const endStr = todayStr(); // US Eastern "today" — see todayStr() above
     const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${SEASON_START}&endDate=${endStr}`);
     if(!res.ok) return [];
     const json = await res.json();
@@ -445,11 +452,24 @@ function buildKey(away, home){ return `${away}@${home}`; }
 // Shown next to the date so that two rows for the same matchup on the same date
 // are visibly either the same game (identical time — would indicate a real bug)
 // or a genuine doubleheader (different times).
+// Always shows the game's start time in US Eastern (labeled explicitly),
+// instead of silently converting to the viewer's own local timezone. That
+// matters for the same reason todayStr() does: a time silently converted to,
+// say, a European viewer's local clock could display a time that rolls into
+// a different calendar day than the date printed right next to it in the
+// same row — showing the real ET time avoids that mismatch for everyone,
+// everywhere, regardless of where they're viewing from.
 function formatGameTime(iso){
   if(!iso) return '';
   const d = new Date(iso);
   if(isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const timeStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit'
+  }).format(d);
+  const tzName = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', timeZoneName: 'short'
+  }).formatToParts(d).find(p => p.type === 'timeZoneName').value; // "EDT" or "EST", correct for the date
+  return `${timeStr} ${tzName}`;
 }
 
 function deriveH2HLeader(h2hText){

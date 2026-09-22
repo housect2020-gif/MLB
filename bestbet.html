@@ -163,6 +163,22 @@ const TEAM_ID_MAP = {
 };
 function teamAbbr(id){ return TEAM_ID_MAP[id] || null; }
 
+// Computes today's date in US Eastern time — the timezone MLB's own schedule
+// data is anchored to. Using the viewer's local clock here was a real bug: a
+// viewer outside US time zones could have their local calendar day roll over
+// while it's still "today" by MLB's own reckoning, silently pulling the
+// wrong day's slate. Intl.DateTimeFormat handles the EDT/EST switch
+// automatically, so this stays correct across the whole season.
+function dateStrET(d){
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(d || new Date());
+  const get = (type) => parts.find(p => p.type === type).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+function todayStr(){ return dateStrET(); }
+
+
 let SEASON_DATA = [];
 let STANDINGS = {};   // team -> {w,l} season-to-date
 let LAST10 = {};      // team -> {w,l} over their last 10 completed games
@@ -178,8 +194,7 @@ const SEASON_START = '2026-03-26'; // Opening Day 2026
 // no longer needs ~150 separate day-by-day requests at all.
 async function fetchFullSeason(){
   try{
-    const todayD = new Date();
-    const endStr = `${todayD.getFullYear()}-${String(todayD.getMonth()+1).padStart(2,'0')}-${String(todayD.getDate()).padStart(2,'0')}`;
+    const endStr = todayStr(); // US Eastern "today"
     const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${SEASON_START}&endDate=${endStr}`);
     if(!res.ok) return [];
     const json = await res.json();
@@ -314,8 +329,7 @@ function pickForGame(away, home, status, statusText, awayScore, homeScore){
 }
 
 async function fetchTodayGames(){
-  const d = new Date();
-  const dateParam = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const dateParam = todayStr(); // US Eastern "today"
   try{
     const res = await fetch(`https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${dateParam}`);
     if(!res.ok) return [];
